@@ -15,7 +15,7 @@ A gamified time management and goal tracking application built with React and Ta
 
 ## 🔗 Live Demo
 
-[View Live App](https://YOUR_USERNAME.github.io/time-manager-app/)
+[View Live App](https://manasasita.github.io/time-manager-app/)
 
 ## 🛠️ Development
 
