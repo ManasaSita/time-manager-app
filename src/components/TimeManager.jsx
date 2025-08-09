@@ -1,5 +1,8 @@
+// TimeManager.jsx - PART 1 OF 3
+// Copy this entire part first
+
 import React, { useState, useEffect } from 'react';
-import { Clock, Play, Pause, CheckCircle, Plus, Calendar, Target, Zap, Trophy, Star, Flame, TrendingUp, DollarSign, Code, Users, BookOpen, Award, Settings, X, Edit3 } from 'lucide-react';
+import { Clock, Play, Pause, CheckCircle, Plus, Calendar, Target, Zap, Trophy, Star, Flame, TrendingUp, DollarSign, Code, Users, BookOpen, Award, Settings, X, Edit3, RefreshCw, Repeat } from 'lucide-react';
 
 // Custom hook for localStorage
 const useLocalStorage = (key, initialValue) => {
@@ -27,42 +30,37 @@ const useLocalStorage = (key, initialValue) => {
 };
 
 const TimeManager = () => {
-  // Persistent data with localStorage
-  const [tasks, setTasks] = useLocalStorage('tasks', [
-    { id: 1, text: 'Update LinkedIn profile for Software Developer roles', category: 'profile', completed: false, priority: 'high', xp: 50, deadline: '2025-01-10' },
-    { id: 2, text: 'Apply to 5 companies today (service + product based)', category: 'job-hunt', completed: false, priority: 'high', xp: 75, deadline: '2025-01-08' },
-    { id: 3, text: 'Solve 5 coding problems (company interview level)', category: 'assessment', completed: false, priority: 'high', xp: 100, deadline: '2025-01-09' },
-    { id: 4, text: 'Build one portfolio project feature', category: 'personal', completed: false, priority: 'medium', xp: 60, deadline: '2025-01-15' }
-  ]);
+  // Persistent data with localStorage - Starting with empty/default values
+  const [tasks, setTasks] = useLocalStorage('tasks', []);
   
   const [completedToday, setCompletedToday] = useLocalStorage('completedToday', 0);
   const [totalXP, setTotalXP] = useLocalStorage('totalXP', 0);
-  const [streak, setStreak] = useLocalStorage('streak', 1);
+  const [streak, setStreak] = useLocalStorage('streak', 0);
   const [level, setLevel] = useState(1);
   const [lastActiveDate, setLastActiveDate] = useLocalStorage('lastActiveDate', new Date().toDateString());
   const [todayTasksCompleted, setTodayTasksCompleted] = useLocalStorage('todayTasksCompleted', false);
 
-  // Progress data with localStorage
+  // Progress data with localStorage - Starting from zero
   const [progress, setProgress] = useLocalStorage('progress', {
-    problemsSolved: 47,
-    applicationsSubmitted: 23,
-    portfolioProjects: 2,
-    networkConnections: 8,
-    emergencyFund: 25000,
+    problemsSolved: 0,
+    applicationsSubmitted: 0,
+    portfolioProjects: 0,
+    networkConnections: 0,
+    emergencyFund: 0,
     monthlyIncome: 0
   });
 
-  // Targets with localStorage
+  // Targets with localStorage - Default aspirational goals
   const [targets, setTargets] = useLocalStorage('targets', {
-    problemsSolved: 500,
+    problemsSolved: 100,
     applicationsSubmitted: 50,
     portfolioProjects: 5,
     networkConnections: 100,
-    emergencyFund: 1000000,
-    monthlyIncome: 100000,
-    salaryTarget: '8-12 LPA',
-    companyType: 'Top Tech Company',
-    timeline: 'October 2025'
+    emergencyFund: 100000,
+    monthlyIncome: 50000,
+    salaryTarget: 'Your Target',
+    companyType: 'Your Dream Company',
+    timeline: 'Your Timeline'
   });
   
   // UI state (not persisted)
@@ -70,11 +68,15 @@ const TimeManager = () => {
   const [selectedCategory, setSelectedCategory] = useState('job-hunt');
   const [selectedPriority, setSelectedPriority] = useState('medium');
   const [selectedDeadline, setSelectedDeadline] = useState('');
+  const [isRecurring, setIsRecurring] = useState(false);
+  const [recurrenceType, setRecurrenceType] = useState('daily');
   const [editingTask, setEditingTask] = useState(null);
   const [editText, setEditText] = useState('');
   const [editCategory, setEditCategory] = useState('');
   const [editPriority, setEditPriority] = useState('');
   const [editDeadline, setEditDeadline] = useState('');
+  const [editIsRecurring, setEditIsRecurring] = useState(false);
+  const [editRecurrenceType, setEditRecurrenceType] = useState('daily');
   const [timer, setTimer] = useState(25 * 60);
   const [isRunning, setIsRunning] = useState(false);
   const [currentFocus, setCurrentFocus] = useState('');
@@ -98,13 +100,19 @@ const TimeManager = () => {
     'learning': { label: 'Skill Building', color: 'bg-indigo-100 text-indigo-800', icon: '📚' }
   };
 
+  const recurrenceOptions = {
+    'daily': { label: 'Daily', icon: '🔄', color: 'bg-blue-500', description: 'Repeats every day' },
+    'weekly': { label: 'Weekly', icon: '📅', color: 'bg-green-500', description: 'Repeats every week' },
+    'monthly': { label: 'Monthly', icon: '📆', color: 'bg-purple-500', description: 'Repeats every month' }
+  };
+
   const motivationalQuotes = [
-    `Your dream SDE role at a ${targets.companyType.toLowerCase()} is being earned today! 💼✨`,
+    `Your dream role at ${targets.companyType} is being earned today! 💼✨`,
     `Every line of code brings you closer to ${targets.salaryTarget}! 💰🔥`,
     "Financial independence isn't a dream, it's your plan! 📈💪",
-    "Today's effort = Tomorrow's job offer letter! 🎯🌟",
-    "You're not just coding, you're building your career empire! 👑💻",
-    "Each problem solved = One step closer to your dream company! 🏢⚡"
+    "Today's effort = Tomorrow's success! 🎯🌟",
+    "You're not just working, you're building your empire! 👑💻",
+    "Each task completed = One step closer to your goals! 🏢⚡"
   ];
 
   // Calculate level based on XP
@@ -128,6 +136,9 @@ const TimeManager = () => {
         setCompletedToday(0);
         setTodayTasksCompleted(false);
         setLastActiveDate(today);
+        
+        // Reset recurring tasks for the new day
+        resetRecurringTasks();
       }
     };
 
@@ -135,6 +146,34 @@ const TimeManager = () => {
     const interval = setInterval(checkAndUpdateStreak, 60000);
     return () => clearInterval(interval);
   }, [lastActiveDate, todayTasksCompleted, setStreak, setCompletedToday, setTodayTasksCompleted, setLastActiveDate]);
+
+  // Reset recurring tasks based on their schedule
+  const resetRecurringTasks = () => {
+    const today = new Date();
+    
+    setTasks(prevTasks => prevTasks.map(task => {
+      if (!task.isRecurring || !task.lastCompleted) return task;
+      
+      const lastCompletedDate = new Date(task.lastCompleted);
+      const daysDiff = Math.floor((today - lastCompletedDate) / (1000 * 60 * 60 * 24));
+      
+      let shouldReset = false;
+      
+      if (task.recurrenceType === 'daily' && daysDiff >= 1) {
+        shouldReset = true;
+      } else if (task.recurrenceType === 'weekly' && daysDiff >= 7) {
+        shouldReset = true;
+      } else if (task.recurrenceType === 'monthly' && daysDiff >= 30) {
+        shouldReset = true;
+      }
+      
+      if (shouldReset) {
+        return { ...task, completed: false, lastCompleted: null };
+      }
+      
+      return task;
+    }));
+  };
 
   // Update activity when user completes tasks or uses focus timer
   const updateDailyActivity = () => {
@@ -168,10 +207,26 @@ const TimeManager = () => {
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
+  const calculateNextDeadline = (recurrenceType) => {
+    const today = new Date();
+    let nextDeadline = new Date();
+    
+    if (recurrenceType === 'daily') {
+      nextDeadline.setDate(today.getDate() + 1);
+    } else if (recurrenceType === 'weekly') {
+      nextDeadline.setDate(today.getDate() + 7);
+    } else if (recurrenceType === 'monthly') {
+      nextDeadline.setMonth(today.getMonth() + 1);
+    }
+    
+    return nextDeadline.toISOString().split('T')[0];
+  };
+
   const addTask = () => {
     if (newTask.trim()) {
       const baseXP = selectedCategory === 'assessment' ? 100 : selectedCategory === 'job-hunt' ? 75 : 50;
-      const finalXP = Math.floor(baseXP * priorities[selectedPriority].xpMultiplier);
+      const recurringBonus = isRecurring ? 1.2 : 1;
+      const finalXP = Math.floor(baseXP * priorities[selectedPriority].xpMultiplier * recurringBonus);
       
       setTasks(prev => [...prev, {
         id: Date.now(),
@@ -180,24 +235,53 @@ const TimeManager = () => {
         completed: false,
         priority: selectedPriority,
         xp: finalXP,
-        deadline: selectedDeadline
+        deadline: selectedDeadline || (isRecurring ? calculateNextDeadline(recurrenceType) : ''),
+        isRecurring: isRecurring,
+        recurrenceType: isRecurring ? recurrenceType : null,
+        lastCompleted: null
       }]);
       setNewTask('');
       setSelectedDeadline('');
+      setIsRecurring(false);
+      setRecurrenceType('daily');
     }
   };
+
+// END OF PART 1 - Continue to Part 2
+// TimeManager.jsx - PART 2 OF 3
+// Add this right after Part 1 (continue from where Part 1 ended)
 
   const toggleTask = (id) => {
     setTasks(prev => prev.map(task => {
       if (task.id === id) {
         const updated = { ...task, completed: !task.completed };
+        
         if (updated.completed && !task.completed) {
           setCompletedToday(prev => prev + 1);
           setTotalXP(prev => prev + task.xp);
           updateDailyActivity();
+          
+          // Handle recurring task
+          if (task.isRecurring) {
+            updated.lastCompleted = new Date().toISOString();
+            // Create a new instance of the recurring task
+            setTimeout(() => {
+              const newDeadline = calculateNextDeadline(task.recurrenceType);
+              setTasks(prevTasks => [...prevTasks, {
+                ...task,
+                id: Date.now() + Math.random(),
+                completed: false,
+                deadline: newDeadline,
+                lastCompleted: null
+              }]);
+            }, 100);
+          }
         } else if (!updated.completed && task.completed) {
           setCompletedToday(prev => Math.max(0, prev - 1));
           setTotalXP(prev => Math.max(0, prev - task.xp));
+          if (task.isRecurring) {
+            updated.lastCompleted = null;
+          }
         }
         return updated;
       }
@@ -255,6 +339,8 @@ const TimeManager = () => {
     setEditCategory(task.category);
     setEditPriority(task.priority);
     setEditDeadline(task.deadline || '');
+    setEditIsRecurring(task.isRecurring || false);
+    setEditRecurrenceType(task.recurrenceType || 'daily');
   };
 
   const cancelEdit = () => {
@@ -263,12 +349,15 @@ const TimeManager = () => {
     setEditCategory('');
     setEditPriority('');
     setEditDeadline('');
+    setEditIsRecurring(false);
+    setEditRecurrenceType('daily');
   };
 
   const saveEdit = () => {
     if (editText.trim()) {
       const baseXP = editCategory === 'assessment' ? 100 : editCategory === 'job-hunt' ? 75 : 50;
-      const finalXP = Math.floor(baseXP * priorities[editPriority].xpMultiplier);
+      const recurringBonus = editIsRecurring ? 1.2 : 1;
+      const finalXP = Math.floor(baseXP * priorities[editPriority].xpMultiplier * recurringBonus);
       
       setTasks(prev => prev.map(task => {
         if (task.id === editingTask) {
@@ -277,8 +366,10 @@ const TimeManager = () => {
             text: editText,
             category: editCategory,
             priority: editPriority,
-            deadline: editDeadline,
-            xp: finalXP
+            deadline: editDeadline || (editIsRecurring ? calculateNextDeadline(editRecurrenceType) : ''),
+            xp: finalXP,
+            isRecurring: editIsRecurring,
+            recurrenceType: editIsRecurring ? editRecurrenceType : null
           };
         }
         return task;
@@ -410,6 +501,10 @@ const TimeManager = () => {
       </div>
     );
   }
+
+// END OF PART 2 - Continue to Part 3
+// TimeManager.jsx - PART 3 OF 3
+// Add this right after Part 2 (this is the main return statement with JSX)
 
   return (
     <div className="max-w-6xl mx-auto p-4 md:p-6 bg-gradient-to-br from-blue-50 to-purple-50 min-h-screen">
@@ -790,6 +885,7 @@ const TimeManager = () => {
               onChange={(e) => setSelectedDeadline(e.target.value)}
               className="flex-1 px-3 md:px-4 py-2 md:py-3 border-2 border-gray-200 rounded-lg focus:outline-none focus:border-blue-500 transition-all text-sm md:text-base"
               min={new Date().toISOString().split('T')[0]}
+              disabled={isRecurring}
             />
             
             <button
@@ -799,8 +895,48 @@ const TimeManager = () => {
               Add Task
             </button>
           </div>
+          
+          {/* Recurring Task Options */}
+          <div className="bg-gradient-to-r from-purple-50 to-blue-50 p-4 rounded-lg border border-purple-200">
+            <div className="flex items-center gap-3 mb-3">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={isRecurring}
+                  onChange={(e) => setIsRecurring(e.target.checked)}
+                  className="w-5 h-5 text-purple-600 rounded focus:ring-purple-500"
+                />
+                <span className="font-semibold text-purple-700 flex items-center gap-1">
+                  <RefreshCw className="h-4 w-4" />
+                  Make this a recurring task
+                </span>
+              </label>
+            </div>
+            
+            {isRecurring && (
+              <div className="grid grid-cols-3 gap-2">
+                {Object.entries(recurrenceOptions).map(([key, option]) => (
+                  <button
+                    key={key}
+                    onClick={() => setRecurrenceType(key)}
+                    className={`p-3 rounded-lg border-2 transition-all ${
+                      recurrenceType === key 
+                        ? 'border-purple-500 bg-purple-100' 
+                        : 'border-gray-200 bg-white hover:border-purple-300'
+                    }`}
+                  >
+                    <div className="text-2xl mb-1">{option.icon}</div>
+                    <div className="font-semibold text-sm">{option.label}</div>
+                    <div className="text-xs text-gray-600">{option.description}</div>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       </div>
+      // TimeManager.jsx - PART 3C (FINAL PART)
+// Add this after Part 3B to complete the component
 
       {/* High Priority Tasks */}
       {priorityTasks.length > 0 && (
@@ -843,7 +979,29 @@ const TimeManager = () => {
                           onChange={(e) => setEditDeadline(e.target.value)}
                           className="flex-1 px-2 py-1 border rounded text-xs"
                           min={new Date().toISOString().split('T')[0]}
+                          disabled={editIsRecurring}
                         />
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <label className="flex items-center gap-2 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={editIsRecurring}
+                            onChange={(e) => setEditIsRecurring(e.target.checked)}
+                            className="w-4 h-4 text-purple-600 rounded"
+                          />
+                          <span className="text-sm font-medium text-purple-700 flex items-center gap-1">
+                            <RefreshCw className="h-3 w-3" />
+                            Recurring
+                          </span>
+                        </label>
+                        {editIsRecurring && (
+                          <select value={editRecurrenceType} onChange={(e) => setEditRecurrenceType(e.target.value)} className="px-2 py-1 border rounded text-xs">
+                            {Object.entries(recurrenceOptions).map(([key, option]) => (
+                              <option key={key} value={key}>{option.icon} {option.label}</option>
+                            ))}
+                          </select>
+                        )}
                       </div>
                       <div className="flex gap-2">
                         <button onClick={saveEdit} className="px-3 py-1 bg-green-500 text-white rounded text-xs hover:bg-green-600">✅ Save</button>
@@ -857,11 +1015,19 @@ const TimeManager = () => {
                       </button>
                       <div className="flex-1">
                         <span className="font-semibold text-sm md:text-lg block">{task.text}</span>
-                        {task.deadline && (
-                          <span className={`inline-block px-2 py-1 rounded text-xs font-bold mt-1 ${deadlineInfo.color}`}>
-                            📅 {deadlineInfo.text}
-                          </span>
-                        )}
+                        <div className="flex items-center gap-2 mt-1">
+                          {task.isRecurring && (
+                            <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-bold text-white ${recurrenceOptions[task.recurrenceType].color}`}>
+                              <RefreshCw className="h-3 w-3" />
+                              {recurrenceOptions[task.recurrenceType].label}
+                            </span>
+                          )}
+                          {task.deadline && (
+                            <span className={`inline-block px-2 py-1 rounded text-xs font-bold ${deadlineInfo.color}`}>
+                              📅 {deadlineInfo.text}
+                            </span>
+                          )}
+                        </div>
                       </div>
                       <span className={`px-2 md:px-3 py-1 rounded-full text-xs md:text-sm font-bold ${categories[task.category].color}`}>
                         {categories[task.category].icon}
@@ -910,7 +1076,21 @@ const TimeManager = () => {
                         <select value={editPriority} onChange={(e) => setEditPriority(e.target.value)} className="flex-1 px-2 py-1 border rounded text-xs">
                           {Object.entries(priorities).map(([key, priority]) => (<option key={key} value={key}>{priority.icon} {priority.label}</option>))}
                         </select>
-                        <input type="date" value={editDeadline} onChange={(e) => setEditDeadline(e.target.value)} className="flex-1 px-2 py-1 border rounded text-xs" min={new Date().toISOString().split('T')[0]} />
+                        <input type="date" value={editDeadline} onChange={(e) => setEditDeadline(e.target.value)} className="flex-1 px-2 py-1 border rounded text-xs" min={new Date().toISOString().split('T')[0]} disabled={editIsRecurring} />
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <label className="flex items-center gap-2 cursor-pointer">
+                          <input type="checkbox" checked={editIsRecurring} onChange={(e) => setEditIsRecurring(e.target.checked)} className="w-4 h-4 text-purple-600 rounded" />
+                          <span className="text-sm font-medium text-purple-700 flex items-center gap-1">
+                            <RefreshCw className="h-3 w-3" />
+                            Recurring
+                          </span>
+                        </label>
+                        {editIsRecurring && (
+                          <select value={editRecurrenceType} onChange={(e) => setEditRecurrenceType(e.target.value)} className="px-2 py-1 border rounded text-xs">
+                            {Object.entries(recurrenceOptions).map(([key, option]) => (<option key={key} value={key}>{option.icon} {option.label}</option>))}
+                          </select>
+                        )}
                       </div>
                       <div className="flex gap-2">
                         <button onClick={saveEdit} className="px-3 py-1 bg-green-500 text-white rounded text-xs hover:bg-green-600">✅ Save</button>
@@ -924,9 +1104,17 @@ const TimeManager = () => {
                       </button>
                       <div className="flex-1">
                         <span className="text-sm md:text-lg block">{task.text}</span>
-                        {task.deadline && (
-                          <span className={`inline-block px-2 py-1 rounded text-xs font-bold mt-1 ${deadlineInfo.color}`}>📅 {deadlineInfo.text}</span>
-                        )}
+                        <div className="flex items-center gap-2 mt-1">
+                          {task.isRecurring && (
+                            <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-bold text-white ${recurrenceOptions[task.recurrenceType].color}`}>
+                              <RefreshCw className="h-3 w-3" />
+                              {recurrenceOptions[task.recurrenceType].label}
+                            </span>
+                          )}
+                          {task.deadline && (
+                            <span className={`inline-block px-2 py-1 rounded text-xs font-bold ${deadlineInfo.color}`}>📅 {deadlineInfo.text}</span>
+                          )}
+                        </div>
                       </div>
                       <span className={`px-2 md:px-3 py-1 rounded-full text-xs md:text-sm ${categories[task.category].color}`}>{categories[task.category].icon}</span>
                       <span className={`px-2 py-1 rounded-full text-xs ${priorities[task.priority].color}`}>{priorities[task.priority].icon}</span>
@@ -953,7 +1141,15 @@ const TimeManager = () => {
             {completedTasks.map(task => (
               <div key={task.id} className="flex items-center gap-3 md:gap-4 p-3 md:p-4 bg-green-50 border border-green-200 rounded-xl opacity-75">
                 <CheckCircle className="h-5 w-5 md:h-6 md:w-6 text-green-600 fill-current" />
-                <span className="flex-1 line-through text-gray-600 text-sm md:text-lg">{task.text}</span>
+                <div className="flex-1">
+                  <span className="line-through text-gray-600 text-sm md:text-lg block">{task.text}</span>
+                  {task.isRecurring && (
+                    <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium text-green-700 bg-green-100 mt-1">
+                      <RefreshCw className="h-3 w-3" />
+                      {recurrenceOptions[task.recurrenceType].label} - Will reset automatically
+                    </span>
+                  )}
+                </div>
                 <span className="bg-green-100 text-green-700 px-2 py-1 rounded-full text-xs font-bold">+{task.xp} ✨</span>
               </div>
             ))}
