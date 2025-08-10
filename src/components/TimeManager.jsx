@@ -1,8 +1,8 @@
-// TimeManager.jsx - PART 1 OF 3
-// Copy this entire part first
+// Enhanced Time Manager with Custom Goals - PART 1
+// This is a complete part - copy this entire section
 
 import React, { useState, useEffect } from 'react';
-import { Clock, Play, Pause, CheckCircle, Plus, Calendar, Target, Zap, Trophy, Star, Flame, TrendingUp, DollarSign, Code, Users, BookOpen, Award, Settings, X, Edit3, RefreshCw, Repeat } from 'lucide-react';
+import { Clock, Play, Pause, CheckCircle, Plus, Calendar, Target, Zap, Trophy, Star, Flame, TrendingUp, DollarSign, Code, Users, BookOpen, Award, Settings, X, Edit3, RefreshCw, Repeat, Trash2, FolderPlus, Folder } from 'lucide-react';
 
 // Custom hook for localStorage
 const useLocalStorage = (key, initialValue) => {
@@ -30,9 +30,62 @@ const useLocalStorage = (key, initialValue) => {
 };
 
 const TimeManager = () => {
-  // Persistent data with localStorage - Starting with empty/default values
+  // Available emoji icons for goals
+  const availableIcons = [
+    '🎯', '💪', '📚', '💰', '🎨', '🎸', '🏃', '🧘', '💻', '📝',
+    '🚀', '🌟', '🔥', '💡', '🎮', '📸', '🍳', '🌱', '🎭', '🎪',
+    '🏋️', '🚴', '🏊', '⚽', '🎾', '🏀', '🎵', '🎤', '🎬', '📖'
+  ];
+
+  // Available colors for goals
+  const availableColors = [
+    { name: 'Blue', class: 'bg-blue-500' },
+    { name: 'Purple', class: 'bg-purple-500' },
+    { name: 'Green', class: 'bg-green-500' },
+    { name: 'Red', class: 'bg-red-500' },
+    { name: 'Orange', class: 'bg-orange-500' },
+    { name: 'Pink', class: 'bg-pink-500' },
+    { name: 'Indigo', class: 'bg-indigo-500' },
+    { name: 'Teal', class: 'bg-teal-500' },
+    { name: 'Yellow', class: 'bg-yellow-500' },
+    { name: 'Gray', class: 'bg-gray-500' }
+  ];
+
+  // User-defined goals
+  const [goals, setGoals] = useLocalStorage('userGoals', [
+    {
+      id: 'default',
+      name: 'Career Development',
+      icon: '💼',
+      description: 'Professional growth and job hunting',
+      targetDeadline: '',
+      xpMultiplier: 1,
+      color: 'bg-blue-500',
+      createdAt: new Date().toISOString()
+    }
+  ]);
+
+  // Currently selected goal
+  const [selectedGoalId, setSelectedGoalId] = useLocalStorage('selectedGoalId', 'default');
+  
+  // Tasks now include goalId
   const [tasks, setTasks] = useLocalStorage('tasks', []);
   
+  // Modal states
+  const [showGoalModal, setShowGoalModal] = useState(false);
+  const [editingGoal, setEditingGoal] = useState(null);
+  const [showSettings, setShowSettings] = useState(false);
+  const [isFullScreen, setIsFullScreen] = useState(false);
+  
+  // New goal form state
+  const [newGoalName, setNewGoalName] = useState('');
+  const [newGoalIcon, setNewGoalIcon] = useState('🎯');
+  const [newGoalDescription, setNewGoalDescription] = useState('');
+  const [newGoalDeadline, setNewGoalDeadline] = useState('');
+  const [newGoalXpMultiplier, setNewGoalXpMultiplier] = useState(1);
+  const [newGoalColor, setNewGoalColor] = useState('bg-blue-500');
+  
+  // Original state variables
   const [completedToday, setCompletedToday] = useLocalStorage('completedToday', 0);
   const [totalXP, setTotalXP] = useLocalStorage('totalXP', 0);
   const [streak, setStreak] = useLocalStorage('streak', 0);
@@ -40,64 +93,53 @@ const TimeManager = () => {
   const [lastActiveDate, setLastActiveDate] = useLocalStorage('lastActiveDate', new Date().toDateString());
   const [todayTasksCompleted, setTodayTasksCompleted] = useLocalStorage('todayTasksCompleted', false);
 
-  // Progress data with localStorage - Starting from zero
-  const [progress, setProgress] = useLocalStorage('progress', {
-    problemsSolved: 0,
-    applicationsSubmitted: 0,
-    portfolioProjects: 0,
-    networkConnections: 0,
-    emergencyFund: 0,
-    monthlyIncome: 0
-  });
-
-  // Targets with localStorage - Default aspirational goals
-  const [targets, setTargets] = useLocalStorage('targets', {
-    problemsSolved: 100,
-    applicationsSubmitted: 50,
-    portfolioProjects: 5,
-    networkConnections: 100,
-    emergencyFund: 100000,
-    monthlyIncome: 50000,
-    salaryTarget: 'Your Target',
-    companyType: 'Your Dream Company',
-    timeline: 'Your Timeline'
-  });
-  
-  // UI state (not persisted)
+  // Task form state - ENHANCED with tracking
   const [newTask, setNewTask] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState('job-hunt');
   const [selectedPriority, setSelectedPriority] = useState('medium');
   const [selectedDeadline, setSelectedDeadline] = useState('');
   const [isRecurring, setIsRecurring] = useState(false);
   const [recurrenceType, setRecurrenceType] = useState('daily');
+  const [taskNotes, setTaskNotes] = useState('');
+  const [taskXP, setTaskXP] = useState(50);
+
+  // NEW: Progress tracking state
+  const [hasProgressTracking, setHasProgressTracking] = useState(false);
+  const [targetValue, setTargetValue] = useState('');
+  const [currentProgress, setCurrentProgress] = useState(0);
+  const [unitType, setUnitType] = useState('');
+  const [showProgressModal, setShowProgressModal] = useState(false);
+  const [progressTaskId, setProgressTaskId] = useState(null);
+  const [progressUpdateValue, setProgressUpdateValue] = useState('');
+
+  // Edit task state - ENHANCED with tracking
   const [editingTask, setEditingTask] = useState(null);
   const [editText, setEditText] = useState('');
-  const [editCategory, setEditCategory] = useState('');
   const [editPriority, setEditPriority] = useState('');
   const [editDeadline, setEditDeadline] = useState('');
   const [editIsRecurring, setEditIsRecurring] = useState(false);
   const [editRecurrenceType, setEditRecurrenceType] = useState('daily');
+  const [editNotes, setEditNotes] = useState('');
+  const [editXP, setEditXP] = useState(50);
+  const [editHasProgressTracking, setEditHasProgressTracking] = useState(false);
+  const [editTargetValue, setEditTargetValue] = useState('');
+  const [editUnitType, setEditUnitType] = useState('');
+
+  // Common unit types for progress tracking
+  const commonUnits = [
+    'steps', 'pages', 'minutes', 'hours', 'reps', 'sets', 
+    'km', 'miles', 'words', 'chapters', 'lessons', 'items',
+    'glasses', 'calories', 'pushups', 'dollars', 'tasks', 'custom'
+  ];
+  
+  // Timer state
   const [timer, setTimer] = useState(25 * 60);
   const [isRunning, setIsRunning] = useState(false);
   const [currentFocus, setCurrentFocus] = useState('');
-  const [isFullScreen, setIsFullScreen] = useState(false);
-  const [showSettings, setShowSettings] = useState(false);
 
   const priorities = {
-    'low': { label: 'Low Priority', color: 'bg-gray-100 text-gray-600', icon: '📝', xpMultiplier: 1 },
-    'medium': { label: 'Medium Priority', color: 'bg-blue-100 text-blue-600', icon: '⚡', xpMultiplier: 1.2 },
-    'high': { label: 'High Priority', color: 'bg-orange-100 text-orange-600', icon: '🔥', xpMultiplier: 1.5 },
-    'urgent': { label: 'URGENT', color: 'bg-red-100 text-red-600', icon: '🚨', xpMultiplier: 2 }
-  };
-
-  const categories = {
-    'job-hunt': { label: 'Job Hunt', color: 'bg-blue-100 text-blue-800', icon: '🎯' },
-    'assessment': { label: 'Coding Practice', color: 'bg-purple-100 text-purple-800', icon: '⚡' },
-    'profile': { label: 'Profile Building', color: 'bg-green-100 text-green-800', icon: '🚀' },
-    'freelance': { label: 'Freelance', color: 'bg-orange-100 text-orange-800', icon: '💰' },
-    'personal': { label: 'Projects', color: 'bg-pink-100 text-pink-800', icon: '🛠️' },
-    'financial': { label: 'Financial Goals', color: 'bg-yellow-100 text-yellow-800', icon: '💎' },
-    'learning': { label: 'Skill Building', color: 'bg-indigo-100 text-indigo-800', icon: '📚' }
+    'low': { label: 'Low Priority', color: 'bg-gray-100 text-gray-600', icon: '📝' },
+    'medium': { label: 'Medium Priority', color: 'bg-blue-100 text-blue-600', icon: '⚡' },
+    'high': { label: 'High Priority', color: 'bg-orange-100 text-orange-600', icon: '🔥' }
   };
 
   const recurrenceOptions = {
@@ -106,14 +148,29 @@ const TimeManager = () => {
     'monthly': { label: 'Monthly', icon: '📆', color: 'bg-purple-500', description: 'Repeats every month' }
   };
 
-  const motivationalQuotes = [
-    `Your dream role at ${targets.companyType} is being earned today! 💼✨`,
-    `Every line of code brings you closer to ${targets.salaryTarget}! 💰🔥`,
-    "Financial independence isn't a dream, it's your plan! 📈💪",
-    "Today's effort = Tomorrow's success! 🎯🌟",
-    "You're not just working, you're building your empire! 👑💻",
-    "Each task completed = One step closer to your goals! 🏢⚡"
-  ];
+  // Get current goal
+  const currentGoal = goals.find(g => g.id === selectedGoalId) || goals[0];
+
+  // Get tasks for current goal
+  const currentGoalTasks = tasks.filter(task => task.goalId === selectedGoalId);
+  const priorityTasks = currentGoalTasks.filter(task => !task.completed && task.priority === 'high');
+  const otherTasks = currentGoalTasks.filter(task => !task.completed && task.priority !== 'high');
+  const completedTasks = currentGoalTasks.filter(task => task.completed);
+
+  // Calculate goal-specific stats
+  const getGoalStats = (goalId) => {
+    const goalTasks = tasks.filter(t => t.goalId === goalId);
+    const completed = goalTasks.filter(t => t.completed).length;
+    const total = goalTasks.length;
+    const xpEarned = goalTasks.filter(t => t.completed).reduce((sum, t) => sum + (t.xp || 0), 0);
+    
+    return {
+      completed,
+      total,
+      xpEarned,
+      progress: total > 0 ? Math.round((completed / total) * 100) : 0
+    };
+  };
 
   // Calculate level based on XP
   useEffect(() => {
@@ -121,7 +178,7 @@ const TimeManager = () => {
     setLevel(newLevel);
   }, [totalXP]);
 
-  // Streak management and date checking
+  // Streak management
   useEffect(() => {
     const checkAndUpdateStreak = () => {
       const today = new Date().toDateString();
@@ -136,9 +193,6 @@ const TimeManager = () => {
         setCompletedToday(0);
         setTodayTasksCompleted(false);
         setLastActiveDate(today);
-        
-        // Reset recurring tasks for the new day
-        resetRecurringTasks();
       }
     };
 
@@ -146,42 +200,6 @@ const TimeManager = () => {
     const interval = setInterval(checkAndUpdateStreak, 60000);
     return () => clearInterval(interval);
   }, [lastActiveDate, todayTasksCompleted, setStreak, setCompletedToday, setTodayTasksCompleted, setLastActiveDate]);
-
-  // Reset recurring tasks based on their schedule
-  const resetRecurringTasks = () => {
-    const today = new Date();
-    
-    setTasks(prevTasks => prevTasks.map(task => {
-      if (!task.isRecurring || !task.lastCompleted) return task;
-      
-      const lastCompletedDate = new Date(task.lastCompleted);
-      const daysDiff = Math.floor((today - lastCompletedDate) / (1000 * 60 * 60 * 24));
-      
-      let shouldReset = false;
-      
-      if (task.recurrenceType === 'daily' && daysDiff >= 1) {
-        shouldReset = true;
-      } else if (task.recurrenceType === 'weekly' && daysDiff >= 7) {
-        shouldReset = true;
-      } else if (task.recurrenceType === 'monthly' && daysDiff >= 30) {
-        shouldReset = true;
-      }
-      
-      if (shouldReset) {
-        return { ...task, completed: false, lastCompleted: null };
-      }
-      
-      return task;
-    }));
-  };
-
-  // Update activity when user completes tasks or uses focus timer
-  const updateDailyActivity = () => {
-    const today = new Date().toDateString();
-    if (lastActiveDate === today) {
-      setTodayTasksCompleted(true);
-    }
-  };
 
   // Timer logic
   useEffect(() => {
@@ -194,13 +212,13 @@ const TimeManager = () => {
       setIsRunning(false);
       setTotalXP(prev => prev + 25);
       setIsFullScreen(false);
-      updateDailyActivity();
-      alert('🎉 Focus session complete! +25 XP earned! Take a 5-minute break.');
+      alert('🎉 Focus session complete! +25 XP earned!');
       setTimer(25 * 60);
     }
     return () => clearInterval(interval);
   }, [isRunning, timer, setTotalXP]);
 
+  // Helper functions
   const formatTime = (seconds) => {
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
@@ -222,38 +240,199 @@ const TimeManager = () => {
     return nextDeadline.toISOString().split('T')[0];
   };
 
+  const getLevelProgress = () => {
+    const currentLevelXP = totalXP % 500;
+    return (currentLevelXP / 500) * 100;
+  };
+
+  const updateDailyActivity = () => {
+    const today = new Date().toDateString();
+    if (lastActiveDate === today) {
+      setTodayTasksCompleted(true);
+    }
+  };
+
+  // Goal management functions
+  const addGoal = () => {
+    if (newGoalName.trim()) {
+      const newGoal = {
+        id: Date.now().toString(),
+        name: newGoalName,
+        icon: newGoalIcon,
+        description: newGoalDescription,
+        targetDeadline: newGoalDeadline,
+        xpMultiplier: newGoalXpMultiplier,
+        color: newGoalColor,
+        createdAt: new Date().toISOString()
+      };
+      
+      setGoals(prev => [...prev, newGoal]);
+      setSelectedGoalId(newGoal.id);
+      resetGoalForm();
+      setShowGoalModal(false);
+    }
+  };
+
+  const updateGoal = () => {
+    if (editingGoal && newGoalName.trim()) {
+      setGoals(prev => prev.map(goal => 
+        goal.id === editingGoal.id 
+          ? {
+              ...goal,
+              name: newGoalName,
+              icon: newGoalIcon,
+              description: newGoalDescription,
+              targetDeadline: newGoalDeadline,
+              xpMultiplier: newGoalXpMultiplier,
+              color: newGoalColor
+            }
+          : goal
+      ));
+      resetGoalForm();
+      setShowGoalModal(false);
+      setEditingGoal(null);
+    }
+  };
+
+  const deleteGoal = (goalId) => {
+    if (goals.length > 1 && window.confirm('Are you sure you want to delete this goal and all its tasks?')) {
+      setGoals(prev => prev.filter(g => g.id !== goalId));
+      setTasks(prev => prev.filter(t => t.goalId !== goalId));
+      if (selectedGoalId === goalId) {
+        setSelectedGoalId(goals.find(g => g.id !== goalId)?.id || 'default');
+      }
+    }
+  };
+
+  const resetGoalForm = () => {
+    setNewGoalName('');
+    setNewGoalIcon('🎯');
+    setNewGoalDescription('');
+    setNewGoalDeadline('');
+    setNewGoalXpMultiplier(1);
+    setNewGoalColor('bg-blue-500');
+  };
+
+  const openEditGoalModal = (goal) => {
+    setEditingGoal(goal);
+    setNewGoalName(goal.name);
+    setNewGoalIcon(goal.icon);
+    setNewGoalDescription(goal.description);
+    setNewGoalDeadline(goal.targetDeadline);
+    setNewGoalXpMultiplier(goal.xpMultiplier);
+    setNewGoalColor(goal.color);
+    setShowGoalModal(true);
+  };
+
+// END OF PART 1 - Continue to Part 2
+
+// Enhanced Time Manager with Custom Goals - PART 2
+// Add this right after PART 1 (continues the component)
+
+  // Task management functions
   const addTask = () => {
     if (newTask.trim()) {
-      const baseXP = selectedCategory === 'assessment' ? 100 : selectedCategory === 'job-hunt' ? 75 : 50;
-      const recurringBonus = isRecurring ? 1.2 : 1;
-      const finalXP = Math.floor(baseXP * priorities[selectedPriority].xpMultiplier * recurringBonus);
+      const finalXP = Math.floor(taskXP * (currentGoal.xpMultiplier || 1));
       
-      setTasks(prev => [...prev, {
+      const newTaskObj = {
         id: Date.now(),
         text: newTask,
-        category: selectedCategory,
+        goalId: selectedGoalId,
         completed: false,
         priority: selectedPriority,
         xp: finalXP,
         deadline: selectedDeadline || (isRecurring ? calculateNextDeadline(recurrenceType) : ''),
         isRecurring: isRecurring,
         recurrenceType: isRecurring ? recurrenceType : null,
-        lastCompleted: null
-      }]);
+        notes: taskNotes,
+        streak: 0,
+        lastCompleted: null,
+        // NEW: Progress tracking fields
+        hasProgressTracking: hasProgressTracking,
+        targetValue: hasProgressTracking ? parseFloat(targetValue) || 0 : null,
+        currentProgress: 0,
+        unitType: hasProgressTracking ? unitType : null,
+        progressHistory: [] // Track progress updates over time
+      };
+      
+      setTasks(prev => [...prev, newTaskObj]);
+      
+      // Reset form
       setNewTask('');
       setSelectedDeadline('');
       setIsRecurring(false);
       setRecurrenceType('daily');
+      setTaskNotes('');
+      setTaskXP(50);
+      setHasProgressTracking(false);
+      setTargetValue('');
+      setCurrentProgress(0);
+      setUnitType('');
     }
   };
 
-// END OF PART 1 - Continue to Part 2
-// TimeManager.jsx - PART 2 OF 3
-// Add this right after Part 1 (continue from where Part 1 ended)
+  // NEW: Function to update task progress
+  const updateTaskProgress = (taskId, newProgress, isIncrement = false) => {
+    setTasks(prev => prev.map(task => {
+      if (task.id === taskId) {
+        const updatedProgress = isIncrement 
+          ? Math.min((task.currentProgress || 0) + newProgress, task.targetValue)
+          : Math.min(newProgress, task.targetValue);
+        
+        const wasIncomplete = task.currentProgress < task.targetValue;
+        const isNowComplete = updatedProgress >= task.targetValue;
+        
+        // Auto-complete task when target is reached
+        if (wasIncomplete && isNowComplete && !task.completed) {
+          setCompletedToday(prev => prev + 1);
+          setTotalXP(prev => prev + task.xp);
+          updateDailyActivity();
+        }
+        
+        return {
+          ...task,
+          currentProgress: updatedProgress,
+          completed: task.completed || (updatedProgress >= task.targetValue),
+          progressHistory: [
+            ...task.progressHistory,
+            {
+              date: new Date().toISOString(),
+              value: updatedProgress
+            }
+          ]
+        };
+      }
+      return task;
+    }));
+  };
+
+  // NEW: Quick increment function
+  const quickIncrementProgress = (taskId, incrementValue) => {
+    const task = tasks.find(t => t.id === taskId);
+    if (task && task.hasProgressTracking) {
+      updateTaskProgress(taskId, incrementValue, true);
+    }
+  };
+
+  // NEW: Open progress update modal
+  const openProgressModal = (taskId) => {
+    const task = tasks.find(t => t.id === taskId);
+    if (task) {
+      setProgressTaskId(taskId);
+      setProgressUpdateValue(task.currentProgress?.toString() || '0');
+      setShowProgressModal(true);
+    }
+  };
 
   const toggleTask = (id) => {
     setTasks(prev => prev.map(task => {
       if (task.id === id) {
+        // Don't allow manual toggle if task has progress tracking and isn't complete
+        if (task.hasProgressTracking && task.currentProgress < task.targetValue && !task.completed) {
+          alert(`Complete the progress first! (${task.currentProgress}/${task.targetValue} ${task.unitType})`);
+          return task;
+        }
+        
         const updated = { ...task, completed: !task.completed };
         
         if (updated.completed && !task.completed) {
@@ -263,8 +442,10 @@ const TimeManager = () => {
           
           // Handle recurring task
           if (task.isRecurring) {
+            updated.streak = (task.streak || 0) + 1;
             updated.lastCompleted = new Date().toISOString();
-            // Create a new instance of the recurring task
+            
+            // Create next occurrence
             setTimeout(() => {
               const newDeadline = calculateNextDeadline(task.recurrenceType);
               setTasks(prevTasks => [...prevTasks, {
@@ -272,21 +453,89 @@ const TimeManager = () => {
                 id: Date.now() + Math.random(),
                 completed: false,
                 deadline: newDeadline,
-                lastCompleted: null
+                lastCompleted: null,
+                currentProgress: 0, // Reset progress for recurring tasks
+                progressHistory: []
               }]);
             }, 100);
           }
         } else if (!updated.completed && task.completed) {
           setCompletedToday(prev => Math.max(0, prev - 1));
           setTotalXP(prev => Math.max(0, prev - task.xp));
-          if (task.isRecurring) {
-            updated.lastCompleted = null;
-          }
         }
         return updated;
       }
       return task;
     }));
+  };
+
+  const startEditTask = (task) => {
+    setEditingTask(task.id);
+    setEditText(task.text);
+    setEditPriority(task.priority);
+    setEditDeadline(task.deadline || '');
+    setEditIsRecurring(task.isRecurring || false);
+    setEditRecurrenceType(task.recurrenceType || 'daily');
+    setEditNotes(task.notes || '');
+    setEditXP(task.xp || 50);
+    setEditHasProgressTracking(task.hasProgressTracking || false);
+    setEditTargetValue(task.targetValue?.toString() || '');
+    setEditUnitType(task.unitType || '');
+  };
+
+  const saveEdit = () => {
+    if (editText.trim()) {
+      const finalXP = Math.floor(editXP * (currentGoal.xpMultiplier || 1));
+      
+      setTasks(prev => prev.map(task => {
+        if (task.id === editingTask) {
+          return {
+            ...task,
+            text: editText,
+            priority: editPriority,
+            deadline: editDeadline || (editIsRecurring ? calculateNextDeadline(editRecurrenceType) : ''),
+            xp: finalXP,
+            isRecurring: editIsRecurring,
+            recurrenceType: editIsRecurring ? editRecurrenceType : null,
+            notes: editNotes,
+            hasProgressTracking: editHasProgressTracking,
+            targetValue: editHasProgressTracking ? parseFloat(editTargetValue) || 0 : null,
+            unitType: editHasProgressTracking ? editUnitType : null,
+            // Keep current progress if it exists
+            currentProgress: task.currentProgress || 0
+          };
+        }
+        return task;
+      }));
+      cancelEdit();
+    }
+  };
+
+  // Enhanced cancelEdit to reset progress fields
+  const cancelEdit = () => {
+    setEditingTask(null);
+    setEditText('');
+    setEditPriority('');
+    setEditDeadline('');
+    setEditIsRecurring(false);
+    setEditRecurrenceType('daily');
+    setEditNotes('');
+    setEditXP(50);
+    setEditHasProgressTracking(false);
+    setEditTargetValue('');
+    setEditUnitType('');
+  };
+
+  // NEW: Calculate progress percentage
+  const getProgressPercentage = (current, target) => {
+    if (!target || target === 0) return 0;
+    return Math.min(Math.round((current / target) * 100), 100);
+  };
+
+  const deleteTask = (taskId) => {
+    if (window.confirm('Are you sure you want to delete this task?')) {
+      setTasks(prev => prev.filter(task => task.id !== taskId));
+    }
   };
 
   const startFocusSession = (taskText) => {
@@ -312,78 +561,6 @@ const TimeManager = () => {
     setCurrentFocus('');
   };
 
-  const getProgressPercentage = (current, target) => {
-    return Math.min((current / target) * 100, 100);
-  };
-
-  const getLevelProgress = () => {
-    const currentLevelXP = totalXP % 500;
-    return (currentLevelXP / 500) * 100;
-  };
-
-  const updateTarget = (key, value) => {
-    setTargets(prev => ({ ...prev, [key]: value }));
-  };
-
-  const updateProgress = (key, value) => {
-    setProgress(prev => ({ ...prev, [key]: parseInt(value) || 0 }));
-  };
-
-  const closeSettings = () => {
-    setShowSettings(false);
-  };
-
-  const startEditTask = (task) => {
-    setEditingTask(task.id);
-    setEditText(task.text);
-    setEditCategory(task.category);
-    setEditPriority(task.priority);
-    setEditDeadline(task.deadline || '');
-    setEditIsRecurring(task.isRecurring || false);
-    setEditRecurrenceType(task.recurrenceType || 'daily');
-  };
-
-  const cancelEdit = () => {
-    setEditingTask(null);
-    setEditText('');
-    setEditCategory('');
-    setEditPriority('');
-    setEditDeadline('');
-    setEditIsRecurring(false);
-    setEditRecurrenceType('daily');
-  };
-
-  const saveEdit = () => {
-    if (editText.trim()) {
-      const baseXP = editCategory === 'assessment' ? 100 : editCategory === 'job-hunt' ? 75 : 50;
-      const recurringBonus = editIsRecurring ? 1.2 : 1;
-      const finalXP = Math.floor(baseXP * priorities[editPriority].xpMultiplier * recurringBonus);
-      
-      setTasks(prev => prev.map(task => {
-        if (task.id === editingTask) {
-          return {
-            ...task,
-            text: editText,
-            category: editCategory,
-            priority: editPriority,
-            deadline: editDeadline || (editIsRecurring ? calculateNextDeadline(editRecurrenceType) : ''),
-            xp: finalXP,
-            isRecurring: editIsRecurring,
-            recurrenceType: editIsRecurring ? editRecurrenceType : null
-          };
-        }
-        return task;
-      }));
-      cancelEdit();
-    }
-  };
-
-  const deleteTask = (taskId) => {
-    if (window.confirm('Are you sure you want to delete this task?')) {
-      setTasks(prev => prev.filter(task => task.id !== taskId));
-    }
-  };
-
   const getDeadlineStatus = (deadline) => {
     if (!deadline) return { status: 'none', color: '', text: '' };
     
@@ -407,32 +584,12 @@ const TimeManager = () => {
     }
   };
 
-  const sortTasksByUrgency = (tasks) => {
-    return tasks.sort((a, b) => {
-      const priorityOrder = { 'urgent': 4, 'high': 3, 'medium': 2, 'low': 1 };
-      const priorityDiff = priorityOrder[b.priority] - priorityOrder[a.priority];
-      
-      if (priorityDiff !== 0) return priorityDiff;
-      
-      if (a.deadline && b.deadline) {
-        return new Date(a.deadline) - new Date(b.deadline);
-      } else if (a.deadline) {
-        return -1;
-      } else if (b.deadline) {
-        return 1;
-      }
-      
-      return 0;
-    });
-  };
-
   const exportData = () => {
     const data = {
+      goals,
       tasks,
       totalXP,
       streak,
-      progress,
-      targets,
       completedToday,
       lastActiveDate,
       exportDate: new Date().toISOString()
@@ -442,15 +599,14 @@ const TimeManager = () => {
     const url = URL.createObjectURL(dataBlob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `time-manager-backup-${new Date().toISOString().split('T')[0]}.json`;
+    link.download = `productivity-tracker-backup-${new Date().toISOString().split('T')[0]}.json`;
     link.click();
   };
 
-  const priorityTasks = sortTasksByUrgency(tasks.filter(task => !task.completed && (task.priority === 'high' || task.priority === 'urgent')));
-  const otherTasks = sortTasksByUrgency(tasks.filter(task => !task.completed && task.priority !== 'high' && task.priority !== 'urgent'));
-  const completedTasks = tasks.filter(task => task.completed);
+// END OF PART 2 - Continue to Part 3 for JSX
 
-  const currentQuote = motivationalQuotes[Math.floor(Date.now() / (1000 * 60 * 60 * 24)) % motivationalQuotes.length];
+// Enhanced Time Manager with Custom Goals - PART 3
+// Add this right after PART 2 (the return statement begins here)
 
   // Full Screen Focus Mode
   if (isFullScreen) {
@@ -487,162 +643,296 @@ const TimeManager = () => {
           <div className="bg-white/10 rounded-lg p-6">
             <h3 className="text-xl font-bold mb-4">🧠 Focus Mantras</h3>
             <div className="text-lg space-y-2">
-              <p>"I am building my dream career with every focused minute"</p>
-              <p>"This session brings me closer to {targets.salaryTarget}"</p>
+              <p>"I am building my dream with every focused minute"</p>
+              <p>"This session brings me closer to my goals"</p>
               <p>"Focus now = Freedom later"</p>
             </div>
-          </div>
-          <div className="mt-8 text-purple-200">
-            <p className="text-sm">📱 Put your phone in Do Not Disturb mode</p>
-            <p className="text-sm">🚫 Close all other apps and notifications</p>
-            <p className="text-sm">💪 You've got this! Stay focused!</p>
           </div>
         </div>
       </div>
     );
   }
 
-// END OF PART 2 - Continue to Part 3
-// TimeManager.jsx - PART 3 OF 3
-// Add this right after Part 2 (this is the main return statement with JSX)
-
+  // Main App UI
   return (
-    <div className="max-w-6xl mx-auto p-4 md:p-6 bg-gradient-to-br from-blue-50 to-purple-50 min-h-screen">
-      {/* Settings Modal */}
-      {showSettings && (
-        <div className="fixed inset-0 bg-black/50 flex items-start justify-center z-50 p-4 pt-8 overflow-y-auto">
-          <div className="bg-white rounded-xl max-w-2xl w-full mx-auto relative max-h-[85vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
-            <button onClick={closeSettings} className="absolute -top-3 -right-3 p-2 bg-white/90 backdrop-blur-sm rounded-full hover:bg-white transition-all z-20 shadow-lg">
-              <X className="h-5 w-5 text-gray-700" />
-            </button>
+    <div className="max-w-7xl mx-auto p-4 md:p-6 bg-gradient-to-br from-blue-50 to-purple-50 min-h-screen">
+      {/* Goal Modal */}
+      {showGoalModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl max-w-md w-full p-6 max-h-[90vh] overflow-y-auto">
+            <h2 className="text-2xl font-bold mb-4">
+              {editingGoal ? 'Edit Goal' : 'Create New Goal'}
+            </h2>
             
-            <div className="flex-1 overflow-y-auto p-6">
-              <div className="space-y-6">
-                <div>
-                  <h3 className="text-lg font-semibold mb-3">💾 Data Management</h3>
-                  <div className="flex gap-3">
-                    <button onClick={exportData} className="px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-all font-semibold">
-                      📥 Export Data
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium mb-1">Goal Name</label>
+                <input
+                  type="text"
+                  value={newGoalName}
+                  onChange={(e) => setNewGoalName(e.target.value)}
+                  className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="e.g., Learn Guitar, Fitness Journey"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium mb-1">Choose Icon</label>
+                <div className="grid grid-cols-10 gap-2">
+                  {availableIcons.map(icon => (
+                    <button
+                      key={icon}
+                      onClick={() => setNewGoalIcon(icon)}
+                      className={`p-2 text-2xl rounded-lg border-2 transition-all ${
+                        newGoalIcon === icon 
+                          ? 'border-blue-500 bg-blue-50' 
+                          : 'border-gray-200 hover:border-gray-300'
+                      }`}
+                    >
+                      {icon}
                     </button>
-                    <div className="text-xs text-gray-500 flex items-center">
-                      Data is automatically saved to your browser
-                    </div>
-                  </div>
-                </div>
-
-                <div>
-                  <h3 className="text-lg font-semibold mb-3">🎯 Career Goals</h3>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm font-medium mb-1">Company Type</label>
-                      <input type="text" value={targets.companyType} onChange={(e) => updateTarget('companyType', e.target.value)} className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium mb-1">Salary Target</label>
-                      <input type="text" value={targets.salaryTarget} onChange={(e) => updateTarget('salaryTarget', e.target.value)} className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                    </div>
-                    <div className="md:col-span-2">
-                      <label className="block text-sm font-medium mb-1">Timeline</label>
-                      <input type="text" value={targets.timeline} onChange={(e) => updateTarget('timeline', e.target.value)} className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                    </div>
-                  </div>
-                </div>
-                
-                <div>
-                  <h3 className="text-lg font-semibold mb-3">📊 Progress Targets</h3>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm font-medium mb-1">Problems to Solve</label>
-                      <input type="number" value={targets.problemsSolved} onChange={(e) => updateTarget('problemsSolved', parseInt(e.target.value) || 0)} className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium mb-1">Applications Target</label>
-                      <input type="number" value={targets.applicationsSubmitted} onChange={(e) => updateTarget('applicationsSubmitted', parseInt(e.target.value) || 0)} className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium mb-1">Portfolio Projects</label>
-                      <input type="number" value={targets.portfolioProjects} onChange={(e) => updateTarget('portfolioProjects', parseInt(e.target.value) || 0)} className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium mb-1">Network Connections</label>
-                      <input type="number" value={targets.networkConnections} onChange={(e) => updateTarget('networkConnections', parseInt(e.target.value) || 0)} className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                    </div>
-                  </div>
-                </div>
-                
-                <div>
-                  <h3 className="text-lg font-semibold mb-3">💰 Financial Targets</h3>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm font-medium mb-1">Emergency Fund (₹)</label>
-                      <input type="number" value={targets.emergencyFund} onChange={(e) => updateTarget('emergencyFund', parseInt(e.target.value) || 0)} className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium mb-1">Monthly Income Target (₹)</label>
-                      <input type="number" value={targets.monthlyIncome} onChange={(e) => updateTarget('monthlyIncome', parseInt(e.target.value) || 0)} className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                    </div>
-                  </div>
-                </div>
-
-                <div>
-                  <h3 className="text-lg font-semibold mb-3">📈 Update Your Progress</h3>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm font-medium mb-1">Problems Solved So Far</label>
-                      <input type="number" value={progress.problemsSolved} onChange={(e) => updateProgress('problemsSolved', e.target.value)} className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500" />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium mb-1">Applications Submitted</label>
-                      <input type="number" value={progress.applicationsSubmitted} onChange={(e) => updateProgress('applicationsSubmitted', e.target.value)} className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500" />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium mb-1">Portfolio Projects Done</label>
-                      <input type="number" value={progress.portfolioProjects} onChange={(e) => updateProgress('portfolioProjects', e.target.value)} className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500" />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium mb-1">Network Connections Made</label>
-                      <input type="number" value={progress.networkConnections} onChange={(e) => updateProgress('networkConnections', e.target.value)} className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500" />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium mb-1">Emergency Fund Saved (₹)</label>
-                      <input type="number" value={progress.emergencyFund} onChange={(e) => updateProgress('emergencyFund', e.target.value)} className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500" />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium mb-1">Current Monthly Income (₹)</label>
-                      <input type="number" value={progress.monthlyIncome} onChange={(e) => updateProgress('monthlyIncome', e.target.value)} className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500" />
-                    </div>
-                  </div>
+                  ))}
                 </div>
               </div>
+
+              <div>
+                <label className="block text-sm font-medium mb-1">Description</label>
+                <textarea
+                  value={newGoalDescription}
+                  onChange={(e) => setNewGoalDescription(e.target.value)}
+                  className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  rows="2"
+                  placeholder="Brief description of your goal"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium mb-1">Target Deadline (Optional)</label>
+                <input
+                  type="date"
+                  value={newGoalDeadline}
+                  onChange={(e) => setNewGoalDeadline(e.target.value)}
+                  className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  min={new Date().toISOString().split('T')[0]}
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium mb-1">Color Theme</label>
+                <div className="grid grid-cols-5 gap-2">
+                  {availableColors.map(color => (
+                    <button
+                      key={color.class}
+                      onClick={() => setNewGoalColor(color.class)}
+                      className={`h-10 rounded-lg ${color.class} ${
+                        newGoalColor === color.class 
+                          ? 'ring-2 ring-offset-2 ring-gray-800' 
+                          : ''
+                      }`}
+                    />
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium mb-1">XP Multiplier</label>
+                <input
+                  type="number"
+                  value={newGoalXpMultiplier}
+                  onChange={(e) => setNewGoalXpMultiplier(parseFloat(e.target.value) || 1)}
+                  className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  min="0.5"
+                  max="3"
+                  step="0.5"
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  Multiply XP rewards for this goal (1x is normal)
+                </p>
+              </div>
             </div>
-            
-            <div className="p-6 pt-4 border-t border-gray-200 flex-shrink-0 sticky bottom-0 bg-white rounded-b-xl">
-              <button onClick={closeSettings} className="w-full px-4 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-all font-semibold">
-                Save Settings ✅
+
+            <div className="flex gap-3 mt-6">
+              <button
+                onClick={editingGoal ? updateGoal : addGoal}
+                className="flex-1 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-all font-semibold"
+              >
+                {editingGoal ? 'Update Goal' : 'Create Goal'}
+              </button>
+              <button
+                onClick={() => {
+                  setShowGoalModal(false);
+                  setEditingGoal(null);
+                  resetGoalForm();
+                }}
+                className="flex-1 px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-all font-semibold"
+              >
+                Cancel
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Header */}
-      <div className="mb-6 text-center relative">
-        <button onClick={() => setShowSettings(true)} className="absolute top-0 right-0 p-2 bg-gray-200 hover:bg-gray-300 rounded-lg transition-all">
-          <Settings className="h-5 w-5" />
-        </button>
-        <div className="absolute top-0 left-0 bg-gradient-to-r from-yellow-400 to-orange-500 text-white px-3 py-1 rounded-full text-sm">
-          🔥 Day {streak} Streak!
+      {/* Settings Modal */}
+      {showSettings && (
+        <div className="fixed inset-0 bg-black/50 flex items-start justify-center z-50 p-4 pt-8 overflow-y-auto">
+          <div className="bg-white rounded-xl max-w-2xl w-full mx-auto relative">
+            <div className="p-6">
+              <div className="flex justify-between items-center mb-4">
+                <h2 className="text-2xl font-bold">Settings</h2>
+                <button onClick={() => setShowSettings(false)} className="p-2 hover:bg-gray-100 rounded-lg">
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+              
+              <div className="space-y-6">
+                <div>
+                  <h3 className="text-lg font-semibold mb-3">📊 Statistics</h3>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="bg-gray-50 p-3 rounded-lg">
+                      <p className="text-sm text-gray-600">Total XP</p>
+                      <p className="text-2xl font-bold">{totalXP}</p>
+                    </div>
+                    <div className="bg-gray-50 p-3 rounded-lg">
+                      <p className="text-sm text-gray-600">Current Level</p>
+                      <p className="text-2xl font-bold">{level}</p>
+                    </div>
+                    <div className="bg-gray-50 p-3 rounded-lg">
+                      <p className="text-sm text-gray-600">Total Goals</p>
+                      <p className="text-2xl font-bold">{goals.length}</p>
+                    </div>
+                    <div className="bg-gray-50 p-3 rounded-lg">
+                      <p className="text-sm text-gray-600">Total Tasks</p>
+                      <p className="text-2xl font-bold">{tasks.length}</p>
+                    </div>
+                  </div>
+                </div>
+
+                <div>
+                  <h3 className="text-lg font-semibold mb-3">💾 Data Management</h3>
+                  <button 
+                    onClick={exportData}
+                    className="px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-all font-semibold"
+                  >
+                    📥 Export All Data
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
-        <h1 className="text-2xl md:text-4xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent mb-2 mt-8">
-          🚀 {targets.companyType} & Financial Freedom
-        </h1>
-        <p className="text-sm md:text-lg text-gray-700 font-medium bg-white/60 rounded-lg px-4 py-2 inline-block">
-          {currentQuote}
-        </p>
+      )}
+      {/* Header with Goal Selector */}
+      <div className="mb-6">
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-4">
+            <h1 className="text-3xl md:text-4xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
+              Life Productivity Tracker
+            </h1>
+          </div>
+          <button
+            onClick={() => setShowSettings(true)}
+            className="p-2 bg-gray-200 hover:bg-gray-300 rounded-lg transition-all"
+          >
+            <Settings className="h-5 w-5" />
+          </button>
+        </div>
+
+        {/* Goal Tabs */}
+        <div className="flex items-center gap-2 overflow-x-auto pb-2">
+          {goals.map(goal => {
+            const stats = getGoalStats(goal.id);
+            return (
+              <button
+                key={goal.id}
+                onClick={() => setSelectedGoalId(goal.id)}
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all whitespace-nowrap ${
+                  selectedGoalId === goal.id
+                    ? `${goal.color} text-white shadow-lg`
+                    : 'bg-white hover:bg-gray-50 border border-gray-200'
+                }`}
+              >
+                <span className="text-xl">{goal.icon}</span>
+                <div className="text-left">
+                  <div className="font-semibold">{goal.name}</div>
+                  <div className="text-xs opacity-75">
+                    {stats.completed}/{stats.total} tasks • {stats.xpEarned} XP
+                  </div>
+                </div>
+              </button>
+            );
+          })}
+          <button
+            onClick={() => setShowGoalModal(true)}
+            className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-green-500 to-emerald-500 text-white rounded-lg hover:from-green-600 hover:to-emerald-600 transition-all shadow-md whitespace-nowrap"
+          >
+            <FolderPlus className="h-5 w-5" />
+            New Goal
+          </button>
+        </div>
       </div>
 
+      {/* Current Goal Dashboard */}
+      {currentGoal && (
+        <div className={`${currentGoal.color} text-white p-6 rounded-xl mb-6 shadow-lg`}>
+          <div className="flex items-start justify-between">
+            <div>
+              <div className="flex items-center gap-3 mb-2">
+                <span className="text-4xl">{currentGoal.icon}</span>
+                <div>
+                  <h2 className="text-2xl font-bold">{currentGoal.name}</h2>
+                  {currentGoal.description && (
+                    <p className="text-white/80 text-sm">{currentGoal.description}</p>
+                  )}
+                </div>
+              </div>
+              {currentGoal.targetDeadline && (
+                <p className="text-white/80 text-sm">
+                  Target: {new Date(currentGoal.targetDeadline).toLocaleDateString()}
+                </p>
+              )}
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={() => openEditGoalModal(currentGoal)}
+                className="p-2 bg-white/20 rounded-lg hover:bg-white/30 transition-all"
+              >
+                <Edit3 className="h-4 w-4" />
+              </button>
+              {goals.length > 1 && (
+                <button
+                  onClick={() => deleteGoal(currentGoal.id)}
+                  className="p-2 bg-white/20 rounded-lg hover:bg-white/30 transition-all"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </button>
+              )}
+            </div>
+          </div>
+          
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
+            <div className="bg-white/20 rounded-lg p-3">
+              <p className="text-white/80 text-sm">Tasks</p>
+              <p className="text-2xl font-bold">{getGoalStats(currentGoal.id).total}</p>
+            </div>
+            <div className="bg-white/20 rounded-lg p-3">
+              <p className="text-white/80 text-sm">Completed</p>
+              <p className="text-2xl font-bold">{getGoalStats(currentGoal.id).completed}</p>
+            </div>
+            <div className="bg-white/20 rounded-lg p-3">
+              <p className="text-white/80 text-sm">Progress</p>
+              <p className="text-2xl font-bold">{getGoalStats(currentGoal.id).progress}%</p>
+            </div>
+            <div className="bg-white/20 rounded-lg p-3">
+              <p className="text-white/80 text-sm">XP Earned</p>
+              <p className="text-2xl font-bold">{getGoalStats(currentGoal.id).xpEarned}</p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Player Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4 mb-6">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
         <div className="bg-gradient-to-r from-purple-500 to-pink-500 text-white p-3 md:p-4 rounded-xl shadow-lg">
           <div className="flex items-center justify-between">
             <div>
@@ -659,7 +949,7 @@ const TimeManager = () => {
         <div className="bg-gradient-to-r from-green-500 to-emerald-500 text-white p-3 md:p-4 rounded-xl shadow-lg">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-green-100 text-xs md:text-sm font-medium">XP</p>
+              <p className="text-green-100 text-xs md:text-sm font-medium">Total XP</p>
               <p className="text-xl md:text-3xl font-bold">{totalXP}</p>
             </div>
             <Star className="h-6 w-6 md:h-10 md:w-10 text-yellow-300" />
@@ -687,132 +977,7 @@ const TimeManager = () => {
         </div>
       </div>
 
-      {/* Progress Dashboard */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6 mb-6">
-        <div className="bg-white/80 backdrop-blur rounded-xl p-4 md:p-6 shadow-lg border border-white/20">
-          <h3 className="text-lg md:text-xl font-bold mb-4 flex items-center gap-2">
-            <Target className="h-5 w-5 md:h-6 md:w-6 text-blue-500" />
-            🎯 Career Progress
-          </h3>
-          
-          <div className="space-y-4">
-            <div>
-              <div className="flex justify-between mb-2">
-                <span className="text-xs md:text-sm font-medium">Coding Problems</span>
-                <span className="text-xs md:text-sm text-gray-600">{progress.problemsSolved}/{targets.problemsSolved}</span>
-              </div>
-              <div className="w-full bg-gray-200 rounded-full h-2 md:h-3">
-                <div className="bg-gradient-to-r from-green-400 to-green-600 h-2 md:h-3 rounded-full transition-all duration-300" 
-                     style={{width: `${getProgressPercentage(progress.problemsSolved, targets.problemsSolved)}%`}}></div>
-              </div>
-              <input 
-                type="number" 
-                value={progress.problemsSolved} 
-                onChange={(e) => updateProgress('problemsSolved', e.target.value)}
-                className="mt-2 w-16 md:w-20 px-2 py-1 border rounded text-xs md:text-sm"
-                placeholder="Update"
-              />
-            </div>
-
-            <div>
-              <div className="flex justify-between mb-2">
-                <span className="text-xs md:text-sm font-medium">Applications</span>
-                <span className="text-xs md:text-sm text-gray-600">{progress.applicationsSubmitted}/{targets.applicationsSubmitted}</span>
-              </div>
-              <div className="w-full bg-gray-200 rounded-full h-2 md:h-3">
-                <div className="bg-gradient-to-r from-blue-400 to-blue-600 h-2 md:h-3 rounded-full transition-all duration-300" 
-                     style={{width: `${getProgressPercentage(progress.applicationsSubmitted, targets.applicationsSubmitted)}%`}}></div>
-              </div>
-              <input 
-                type="number" 
-                value={progress.applicationsSubmitted} 
-                onChange={(e) => updateProgress('applicationsSubmitted', e.target.value)}
-                className="mt-2 w-16 md:w-20 px-2 py-1 border rounded text-xs md:text-sm"
-                placeholder="Update"
-              />
-            </div>
-
-            <div>
-              <div className="flex justify-between mb-2">
-                <span className="text-xs md:text-sm font-medium">Portfolio Projects</span>
-                <span className="text-xs md:text-sm text-gray-600">{progress.portfolioProjects}/{targets.portfolioProjects}</span>
-              </div>
-              <div className="w-full bg-gray-200 rounded-full h-2 md:h-3">
-                <div className="bg-gradient-to-r from-purple-400 to-purple-600 h-2 md:h-3 rounded-full transition-all duration-300" 
-                     style={{width: `${getProgressPercentage(progress.portfolioProjects, targets.portfolioProjects)}%`}}></div>
-              </div>
-              <input 
-                type="number" 
-                value={progress.portfolioProjects} 
-                onChange={(e) => updateProgress('portfolioProjects', e.target.value)}
-                className="mt-2 w-16 md:w-20 px-2 py-1 border rounded text-xs md:text-sm"
-                placeholder="Update"
-              />
-            </div>
-          </div>
-        </div>
-
-        <div className="bg-white/80 backdrop-blur rounded-xl p-4 md:p-6 shadow-lg border border-white/20">
-          <h3 className="text-lg md:text-xl font-bold mb-4 flex items-center gap-2">
-            <DollarSign className="h-5 w-5 md:h-6 md:w-6 text-green-500" />
-            💰 Financial Progress
-          </h3>
-          
-          <div className="space-y-4">
-            <div>
-              <div className="flex justify-between mb-2">
-                <span className="text-xs md:text-sm font-medium">Emergency Fund</span>
-                <span className="text-xs md:text-sm text-gray-600">₹{progress.emergencyFund.toLocaleString()}/₹{targets.emergencyFund.toLocaleString()}</span>
-              </div>
-              <div className="w-full bg-gray-200 rounded-full h-2 md:h-3">
-                <div className="bg-gradient-to-r from-green-400 to-emerald-600 h-2 md:h-3 rounded-full transition-all duration-300" 
-                     style={{width: `${getProgressPercentage(progress.emergencyFund, targets.emergencyFund)}%`}}></div>
-              </div>
-              <input 
-                type="number" 
-                value={progress.emergencyFund} 
-                onChange={(e) => updateProgress('emergencyFund', e.target.value)}
-                className="mt-2 w-24 md:w-32 px-2 py-1 border rounded text-xs md:text-sm"
-                placeholder="Update ₹"
-              />
-            </div>
-
-            <div>
-              <div className="flex justify-between mb-2">
-                <span className="text-xs md:text-sm font-medium">Monthly Income</span>
-                <span className="text-xs md:text-sm text-gray-600">₹{progress.monthlyIncome.toLocaleString()}/₹{targets.monthlyIncome.toLocaleString()}</span>
-              </div>
-              <div className="w-full bg-gray-200 rounded-full h-2 md:h-3">
-                <div className="bg-gradient-to-r from-yellow-400 to-orange-600 h-2 md:h-3 rounded-full transition-all duration-300" 
-                     style={{width: `${getProgressPercentage(progress.monthlyIncome, targets.monthlyIncome)}%`}}></div>
-              </div>
-              <input 
-                type="number" 
-                value={progress.monthlyIncome} 
-                onChange={(e) => updateProgress('monthlyIncome', e.target.value)}
-                className="mt-2 w-24 md:w-32 px-2 py-1 border rounded text-xs md:text-sm"
-                placeholder="Update ₹"
-              />
-            </div>
-
-            <div className="bg-gradient-to-r from-green-100 to-emerald-100 p-3 md:p-4 rounded-lg mt-4">
-              <h4 className="font-semibold text-green-800 mb-2 text-sm md:text-base">💎 Your Goals</h4>
-              <div className="text-xs md:text-sm text-green-700 space-y-1">
-                <div className="flex justify-between">
-                  <span>Target Salary:</span>
-                  <span className="font-medium">{targets.salaryTarget}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Timeline:</span>
-                  <span className="font-medium">{targets.timeline}</span>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Enhanced Pomodoro Timer */}
+      {/* Pomodoro Timer */}
       <div className="bg-gradient-to-r from-indigo-500 to-purple-600 text-white p-4 md:p-6 rounded-xl mb-6 shadow-lg">
         <div className="text-center">
           <h2 className="text-xl md:text-2xl font-bold mb-4">🎯 Deep Focus Zone</h2>
@@ -820,7 +985,9 @@ const TimeManager = () => {
             {formatTime(timer)}
           </div>
           {currentFocus && (
-            <p className="text-indigo-100 mb-4 text-sm md:text-lg">🔥 Working on: <span className="font-semibold">{currentFocus}</span></p>
+            <p className="text-indigo-100 mb-4 text-sm md:text-lg">
+              🔥 Working on: <span className="font-semibold">{currentFocus}</span>
+            </p>
           )}
           <div className="flex justify-center gap-3 md:gap-4 mb-4">
             <button
@@ -837,8 +1004,9 @@ const TimeManager = () => {
               Reset
             </button>
           </div>
-          <p className="text-indigo-200 text-xs md:text-sm">🏆 Complete a session to earn +25 XP bonus!</p>
-          <p className="text-indigo-200 text-xs md:text-sm mt-1">📱 Click a task's focus button for full-screen mode!</p>
+          <p className="text-indigo-200 text-xs md:text-sm">
+            🏆 Complete a session to earn +25 XP bonus!
+          </p>
         </div>
       </div>
 
@@ -846,54 +1014,132 @@ const TimeManager = () => {
       <div className="bg-white/80 backdrop-blur p-4 md:p-6 rounded-xl mb-6 shadow-lg border border-white/20">
         <h3 className="text-lg md:text-xl font-bold mb-4 flex items-center gap-2">
           <Plus className="h-5 w-5 md:h-6 md:w-6 text-blue-500" />
-          🎮 Add New Mission
+          Add Task for {currentGoal?.icon} {currentGoal?.name}
         </h3>
         <div className="space-y-3">
-          <input
-            type="text"
-            value={newTask}
-            onChange={(e) => setNewTask(e.target.value)}
-            placeholder="What epic task will you conquer today?"
-            className="w-full px-3 md:px-4 py-2 md:py-3 border-2 border-gray-200 rounded-lg focus:outline-none focus:border-blue-500 transition-all text-sm md:text-base"
-            onKeyPress={(e) => e.key === 'Enter' && addTask()}
-          />
-          
-          <div className="flex flex-col md:flex-row gap-3">
-            <select
-              value={selectedCategory}
-              onChange={(e) => setSelectedCategory(e.target.value)}
-              className="flex-1 px-3 md:px-4 py-2 md:py-3 border-2 border-gray-200 rounded-lg focus:outline-none focus:border-blue-500 transition-all text-sm md:text-base"
-            >
-              {Object.entries(categories).map(([key, cat]) => (
-                <option key={key} value={key}>{cat.icon} {cat.label}</option>
-              ))}
-            </select>
-            
-            <select
-              value={selectedPriority}
-              onChange={(e) => setSelectedPriority(e.target.value)}
-              className="flex-1 px-3 md:px-4 py-2 md:py-3 border-2 border-gray-200 rounded-lg focus:outline-none focus:border-blue-500 transition-all text-sm md:text-base"
-            >
-              {Object.entries(priorities).map(([key, priority]) => (
-                <option key={key} value={key}>{priority.icon} {priority.label}</option>
-              ))}
-            </select>
-            
+          <div className="flex gap-3">
             <input
-              type="date"
-              value={selectedDeadline}
-              onChange={(e) => setSelectedDeadline(e.target.value)}
+              type="text"
+              value={newTask}
+              onChange={(e) => setNewTask(e.target.value)}
+              placeholder="What do you want to accomplish?"
               className="flex-1 px-3 md:px-4 py-2 md:py-3 border-2 border-gray-200 rounded-lg focus:outline-none focus:border-blue-500 transition-all text-sm md:text-base"
-              min={new Date().toISOString().split('T')[0]}
-              disabled={isRecurring}
+              onKeyPress={(e) => e.key === 'Enter' && !hasProgressTracking && addTask()}
             />
-            
             <button
               onClick={addTask}
               className="px-4 md:px-6 py-2 md:py-3 bg-gradient-to-r from-blue-500 to-purple-600 text-white rounded-lg hover:from-blue-600 hover:to-purple-700 transition-all transform hover:scale-105 font-semibold text-sm md:text-base whitespace-nowrap"
             >
               Add Task
             </button>
+          </div>
+          
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <div>
+              <label className="block text-xs font-medium mb-1">Priority</label>
+              <select
+                value={selectedPriority}
+                onChange={(e) => setSelectedPriority(e.target.value)}
+                className="w-full px-3 py-2 border-2 border-gray-200 rounded-lg focus:outline-none focus:border-blue-500 transition-all text-sm"
+              >
+                {Object.entries(priorities).map(([key, priority]) => (
+                  <option key={key} value={key}>{priority.icon} {priority.label}</option>
+                ))}
+              </select>
+            </div>
+            
+            <div>
+              <label className="block text-xs font-medium mb-1">XP Value</label>
+              <input
+                type="number"
+                value={taskXP}
+                onChange={(e) => setTaskXP(parseInt(e.target.value) || 50)}
+                className="w-full px-3 py-2 border-2 border-gray-200 rounded-lg focus:outline-none focus:border-blue-500 transition-all text-sm"
+                min="10"
+                max="500"
+                step="10"
+              />
+            </div>
+            
+            <div>
+              <label className="block text-xs font-medium mb-1">Deadline</label>
+              <input
+                type="date"
+                value={selectedDeadline}
+                onChange={(e) => setSelectedDeadline(e.target.value)}
+                className="w-full px-3 py-2 border-2 border-gray-200 rounded-lg focus:outline-none focus:border-blue-500 transition-all text-sm"
+                min={new Date().toISOString().split('T')[0]}
+                disabled={isRecurring}
+              />
+            </div>
+            
+            <div>
+              <label className="block text-xs font-medium mb-1">Notes</label>
+              <input
+                type="text"
+                value={taskNotes}
+                onChange={(e) => setTaskNotes(e.target.value)}
+                placeholder="Optional notes"
+                className="w-full px-3 py-2 border-2 border-gray-200 rounded-lg focus:outline-none focus:border-blue-500 transition-all text-sm"
+              />
+            </div>
+          </div>
+          
+          {/* Progress Tracking Options - NEW */}
+          <div className="bg-gradient-to-r from-indigo-50 to-blue-50 p-4 rounded-lg border border-indigo-200">
+            <div className="flex items-center gap-3 mb-3">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={hasProgressTracking}
+                  onChange={(e) => setHasProgressTracking(e.target.checked)}
+                  className="w-5 h-5 text-indigo-600 rounded focus:ring-indigo-500"
+                />
+                <span className="font-semibold text-indigo-700 flex items-center gap-1">
+                  📊 Add Progress Tracking
+                </span>
+              </label>
+            </div>
+            
+            {hasProgressTracking && (
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <div>
+                  <label className="block text-xs font-medium mb-1 text-indigo-700">Target Value</label>
+                  <input
+                    type="number"
+                    value={targetValue}
+                    onChange={(e) => setTargetValue(e.target.value)}
+                    placeholder="e.g., 7000"
+                    className="w-full px-3 py-2 border-2 border-indigo-200 rounded-lg focus:outline-none focus:border-indigo-500 transition-all text-sm"
+                    min="1"
+                  />
+                </div>
+                
+                <div>
+                  <label className="block text-xs font-medium mb-1 text-indigo-700">Unit Type</label>
+                  <input
+                    type="text"
+                    value={unitType}
+                    onChange={(e) => setUnitType(e.target.value)}
+                    placeholder="e.g., steps, pages, minutes"
+                    className="w-full px-3 py-2 border-2 border-indigo-200 rounded-lg focus:outline-none focus:border-indigo-500 transition-all text-sm"
+                    list="unit-suggestions"
+                  />
+                  <datalist id="unit-suggestions">
+                    {commonUnits.map(unit => (
+                      <option key={unit} value={unit} />
+                    ))}
+                  </datalist>
+                </div>
+                
+                <div>
+                  <label className="block text-xs font-medium mb-1 text-indigo-700">Example</label>
+                  <div className="px-3 py-2 bg-white rounded-lg text-sm text-gray-600">
+                    Track: 0/{targetValue || '???'} {unitType || 'units'}
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
           
           {/* Recurring Task Options */}
@@ -935,20 +1181,120 @@ const TimeManager = () => {
           </div>
         </div>
       </div>
-      // TimeManager.jsx - PART 3C (FINAL PART)
-// Add this after Part 3B to complete the component
 
-      {/* High Priority Tasks */}
+      {/* Progress Update Modal - NEW */}
+      {showProgressModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl max-w-sm w-full p-6">
+            <h3 className="text-xl font-bold mb-4">Update Progress</h3>
+            {(() => {
+              const task = tasks.find(t => t.id === progressTaskId);
+              return task ? (
+                <div className="space-y-4">
+                  <div>
+                    <p className="text-sm text-gray-600 mb-2">{task.text}</p>
+                    <div className="bg-gray-100 rounded-lg p-3">
+                      <div className="flex justify-between mb-2">
+                        <span className="text-sm font-medium">Current Progress</span>
+                        <span className="text-sm font-bold">
+                          {task.currentProgress}/{task.targetValue} {task.unitType}
+                        </span>
+                      </div>
+                      <div className="w-full bg-gray-200 rounded-full h-3">
+                        <div 
+                          className="bg-gradient-to-r from-blue-500 to-purple-500 h-3 rounded-full transition-all duration-300"
+                          style={{width: `${getProgressPercentage(task.currentProgress, task.targetValue)}%`}}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-medium mb-2">Set New Progress</label>
+                    <input
+                      type="number"
+                      value={progressUpdateValue}
+                      onChange={(e) => setProgressUpdateValue(e.target.value)}
+                      className="w-full px-3 py-2 border-2 border-gray-200 rounded-lg focus:outline-none focus:border-blue-500"
+                      min="0"
+                      max={task.targetValue}
+                    />
+                    <p className="text-xs text-gray-500 mt-1">
+                      Enter total progress (not increment)
+                    </p>
+                  </div>
+                  
+                  <div className="grid grid-cols-4 gap-2">
+                    <button
+                      onClick={() => quickIncrementProgress(progressTaskId, Math.round(task.targetValue * 0.1))}
+                      className="px-3 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg text-sm font-medium"
+                    >
+                      +10%
+                    </button>
+                    <button
+                      onClick={() => quickIncrementProgress(progressTaskId, Math.round(task.targetValue * 0.25))}
+                      className="px-3 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg text-sm font-medium"
+                    >
+                      +25%
+                    </button>
+                    <button
+                      onClick={() => quickIncrementProgress(progressTaskId, Math.round(task.targetValue * 0.5))}
+                      className="px-3 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg text-sm font-medium"
+                    >
+                      +50%
+                    </button>
+                    <button
+                      onClick={() => updateTaskProgress(progressTaskId, task.targetValue)}
+                      className="px-3 py-2 bg-green-100 hover:bg-green-200 rounded-lg text-sm font-medium text-green-700"
+                    >
+                      Complete
+                    </button>
+                  </div>
+                  
+                  <div className="flex gap-3">
+                    <button
+                      onClick={() => {
+                        updateTaskProgress(progressTaskId, parseFloat(progressUpdateValue) || 0);
+                        setShowProgressModal(false);
+                        setProgressTaskId(null);
+                        setProgressUpdateValue('');
+                      }}
+                      className="flex-1 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-all font-semibold"
+                    >
+                      Update Progress
+                    </button>
+                    <button
+                      onClick={() => {
+                        setShowProgressModal(false);
+                        setProgressTaskId(null);
+                        setProgressUpdateValue('');
+                      }}
+                      className="flex-1 px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-all font-semibold"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              ) : null;
+            })()}
+          </div>
+        </div>
+      )}
+
+      {/* High Priority Tasks - ENHANCED with Progress Display */}
       {priorityTasks.length > 0 && (
         <div className="mb-6">
           <h3 className="text-xl md:text-2xl font-bold mb-4 flex items-center gap-2">
             <Zap className="h-5 w-5 md:h-6 md:w-6 text-red-500" />
-            🚨 URGENT & HIGH PRIORITY MISSIONS
+            High Priority Tasks
           </h3>
           <div className="space-y-3">
             {priorityTasks.map(task => {
               const deadlineInfo = getDeadlineStatus(task.deadline);
               const isEditing = editingTask === task.id;
+              const progressPercent = task.hasProgressTracking 
+                ? getProgressPercentage(task.currentProgress || 0, task.targetValue)
+                : 0;
               
               return (
                 <div key={task.id} className="bg-gradient-to-r from-red-50 to-pink-50 border-2 border-red-200 rounded-xl shadow-md p-3 md:p-4">
@@ -962,26 +1308,67 @@ const TimeManager = () => {
                         placeholder="Edit task..."
                         autoFocus
                       />
-                      <div className="flex flex-col sm:flex-row gap-2">
-                        <select value={editCategory} onChange={(e) => setEditCategory(e.target.value)} className="flex-1 px-2 py-1 border rounded text-xs">
-                          {Object.entries(categories).map(([key, cat]) => (
-                            <option key={key} value={key}>{cat.icon} {cat.label}</option>
-                          ))}
-                        </select>
-                        <select value={editPriority} onChange={(e) => setEditPriority(e.target.value)} className="flex-1 px-2 py-1 border rounded text-xs">
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                        <select value={editPriority} onChange={(e) => setEditPriority(e.target.value)} className="px-2 py-1 border rounded text-xs">
                           {Object.entries(priorities).map(([key, priority]) => (
                             <option key={key} value={key}>{priority.icon} {priority.label}</option>
                           ))}
                         </select>
                         <input
+                          type="number"
+                          value={editXP}
+                          onChange={(e) => setEditXP(parseInt(e.target.value) || 50)}
+                          className="px-2 py-1 border rounded text-xs"
+                          placeholder="XP"
+                        />
+                        <input
                           type="date"
                           value={editDeadline}
                           onChange={(e) => setEditDeadline(e.target.value)}
-                          className="flex-1 px-2 py-1 border rounded text-xs"
+                          className="px-2 py-1 border rounded text-xs"
                           min={new Date().toISOString().split('T')[0]}
                           disabled={editIsRecurring}
                         />
+                        <input
+                          type="text"
+                          value={editNotes}
+                          onChange={(e) => setEditNotes(e.target.value)}
+                          className="px-2 py-1 border rounded text-xs"
+                          placeholder="Notes"
+                        />
                       </div>
+                      
+                      {/* Progress Tracking Edit Options */}
+                      <div className="flex items-center gap-3">
+                        <label className="flex items-center gap-2 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={editHasProgressTracking}
+                            onChange={(e) => setEditHasProgressTracking(e.target.checked)}
+                            className="w-4 h-4 text-indigo-600 rounded"
+                          />
+                          <span className="text-sm font-medium text-indigo-700">📊 Progress Tracking</span>
+                        </label>
+                        {editHasProgressTracking && (
+                          <>
+                            <input
+                              type="number"
+                              value={editTargetValue}
+                              onChange={(e) => setEditTargetValue(e.target.value)}
+                              className="px-2 py-1 border rounded text-xs w-20"
+                              placeholder="Target"
+                            />
+                            <input
+                              type="text"
+                              value={editUnitType}
+                              onChange={(e) => setEditUnitType(e.target.value)}
+                              className="px-2 py-1 border rounded text-xs w-20"
+                              placeholder="Unit"
+                            />
+                          </>
+                        )}
+                      </div>
+                      
                       <div className="flex items-center gap-3">
                         <label className="flex items-center gap-2 cursor-pointer">
                           <input
@@ -1009,42 +1396,111 @@ const TimeManager = () => {
                       </div>
                     </div>
                   ) : (
-                    <div className="flex items-center gap-3 md:gap-4">
-                      <button onClick={() => toggleTask(task.id)} className="text-red-500 hover:text-red-700 transition-all flex-shrink-0">
-                        <CheckCircle className="h-5 w-5 md:h-6 md:w-6" />
-                      </button>
-                      <div className="flex-1">
-                        <span className="font-semibold text-sm md:text-lg block">{task.text}</span>
-                        <div className="flex items-center gap-2 mt-1">
-                          {task.isRecurring && (
-                            <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-bold text-white ${recurrenceOptions[task.recurrenceType].color}`}>
-                              <RefreshCw className="h-3 w-3" />
-                              {recurrenceOptions[task.recurrenceType].label}
-                            </span>
+                    <div>
+                      <div className="flex items-center gap-3 md:gap-4">
+                        <button 
+                          onClick={() => toggleTask(task.id)} 
+                          className={`transition-all flex-shrink-0 ${
+                            task.hasProgressTracking && task.currentProgress < task.targetValue
+                              ? 'text-gray-300 cursor-not-allowed'
+                              : 'text-red-500 hover:text-red-700'
+                          }`}
+                          disabled={task.hasProgressTracking && task.currentProgress < task.targetValue}
+                        >
+                          <CheckCircle className="h-5 w-5 md:h-6 md:w-6" />
+                        </button>
+                        <div className="flex-1">
+                          <span className="font-semibold text-sm md:text-lg block">{task.text}</span>
+                          
+                          {/* Progress Bar - NEW */}
+                          {task.hasProgressTracking && (
+                            <div className="mt-2 mb-2">
+                              <div className="flex justify-between items-center mb-1">
+                                <span className="text-xs font-medium text-gray-600">
+                                  Progress: {task.currentProgress || 0}/{task.targetValue} {task.unitType}
+                                </span>
+                                <span className="text-xs font-bold text-gray-700">
+                                  {progressPercent}%
+                                </span>
+                              </div>
+                              <div className="w-full bg-gray-200 rounded-full h-2">
+                                <div 
+                                  className={`h-2 rounded-full transition-all duration-300 ${
+                                    progressPercent === 100 
+                                      ? 'bg-gradient-to-r from-green-500 to-emerald-500' 
+                                      : 'bg-gradient-to-r from-blue-500 to-purple-500'
+                                  }`}
+                                  style={{width: `${progressPercent}%`}}
+                                />
+                              </div>
+                              
+                              {/* Quick Progress Buttons */}
+                              <div className="flex gap-1 mt-2">
+                                <button
+                                  onClick={() => quickIncrementProgress(task.id, 100)}
+                                  className="px-2 py-1 bg-blue-100 hover:bg-blue-200 rounded text-xs font-medium text-blue-700"
+                                >
+                                  +100
+                                </button>
+                                <button
+                                  onClick={() => quickIncrementProgress(task.id, 500)}
+                                  className="px-2 py-1 bg-blue-100 hover:bg-blue-200 rounded text-xs font-medium text-blue-700"
+                                >
+                                  +500
+                                </button>
+                                <button
+                                  onClick={() => quickIncrementProgress(task.id, 1000)}
+                                  className="px-2 py-1 bg-blue-100 hover:bg-blue-200 rounded text-xs font-medium text-blue-700"
+                                >
+                                  +1000
+                                </button>
+                                <button
+                                  onClick={() => openProgressModal(task.id)}
+                                  className="px-2 py-1 bg-purple-100 hover:bg-purple-200 rounded text-xs font-medium text-purple-700"
+                                >
+                                  Custom
+                                </button>
+                              </div>
+                            </div>
                           )}
-                          {task.deadline && (
-                            <span className={`inline-block px-2 py-1 rounded text-xs font-bold ${deadlineInfo.color}`}>
-                              📅 {deadlineInfo.text}
-                            </span>
-                          )}
+                          
+                          <div className="flex items-center gap-2 mt-1">
+                            {task.isRecurring && (
+                              <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-bold text-white ${recurrenceOptions[task.recurrenceType].color}`}>
+                                <RefreshCw className="h-3 w-3" />
+                                {recurrenceOptions[task.recurrenceType].label}
+                                {task.streak > 0 && ` • ${task.streak} streak`}
+                              </span>
+                            )}
+                            {task.deadline && (
+                              <span className={`inline-block px-2 py-1 rounded text-xs font-bold ${deadlineInfo.color}`}>
+                                📅 {deadlineInfo.text}
+                              </span>
+                            )}
+                            {task.notes && (
+                              <span className="inline-block px-2 py-1 rounded text-xs bg-gray-100 text-gray-600">
+                                📝 {task.notes}
+                              </span>
+                            )}
+                          </div>
                         </div>
-                      </div>
-                      <span className={`px-2 md:px-3 py-1 rounded-full text-xs md:text-sm font-bold ${categories[task.category].color}`}>
-                        {categories[task.category].icon}
-                      </span>
-                      <span className={`px-2 py-1 rounded-full text-xs font-bold ${priorities[task.priority].color}`}>
-                        {priorities[task.priority].icon}
-                      </span>
-                      <span className="bg-yellow-100 text-yellow-800 px-2 py-1 rounded-full text-xs font-bold">+{task.xp}</span>
-                      <div className="flex gap-1">
-                        <button onClick={() => startEditTask(task)} className="px-2 py-1 bg-blue-500 text-white text-xs rounded hover:bg-blue-600 transition-all" title="Edit task">
-                          <Edit3 className="h-3 w-3" />
-                        </button>
-                        <button onClick={() => startFocusSession(task.text)} className="px-3 md:px-4 py-2 bg-blue-500 text-white text-xs md:text-sm rounded-lg hover:bg-blue-600 transition-all font-semibold flex items-center gap-1">
-                          <Clock className="h-3 w-3 md:h-4 md:w-4" />
-                          Focus
-                        </button>
-                        <button onClick={() => deleteTask(task.id)} className="px-2 py-1 bg-red-500 text-white text-xs rounded hover:bg-red-600 transition-all" title="Delete task">🗑️</button>
+                        <span className={`px-2 py-1 rounded-full text-xs font-bold ${priorities[task.priority].color}`}>
+                          {priorities[task.priority].icon}
+                        </span>
+                        <span className="bg-yellow-100 text-yellow-800 px-2 py-1 rounded-full text-xs font-bold">
+                          +{task.xp} XP
+                        </span>
+                        <div className="flex gap-1">
+                          <button onClick={() => startEditTask(task)} className="px-2 py-1 bg-blue-500 text-white text-xs rounded hover:bg-blue-600 transition-all">
+                            <Edit3 className="h-3 w-3" />
+                          </button>
+                          <button onClick={() => startFocusSession(task.text)} className="px-3 py-2 bg-purple-500 text-white text-xs rounded hover:bg-purple-600 transition-all">
+                            <Clock className="h-3 w-3" />
+                          </button>
+                          <button onClick={() => deleteTask(task.id)} className="px-2 py-1 bg-red-500 text-white text-xs rounded hover:bg-red-600 transition-all">
+                            🗑️
+                          </button>
+                        </div>
                       </div>
                     </div>
                   )}
@@ -1055,7 +1511,7 @@ const TimeManager = () => {
         </div>
       )}
 
-      {/* Other Tasks */}
+      {/* Other Tasks - ENHANCED with Progress Display */}
       {otherTasks.length > 0 && (
         <div className="mb-6">
           <h3 className="text-lg md:text-xl font-bold mb-4">📋 Other Tasks</h3>
@@ -1063,66 +1519,138 @@ const TimeManager = () => {
             {otherTasks.map(task => {
               const deadlineInfo = getDeadlineStatus(task.deadline);
               const isEditing = editingTask === task.id;
+              const progressPercent = task.hasProgressTracking 
+                ? getProgressPercentage(task.currentProgress || 0, task.targetValue)
+                : 0;
               
               return (
                 <div key={task.id} className="bg-white/60 backdrop-blur border border-gray-200 rounded-xl shadow-sm p-3 md:p-4">
                   {isEditing ? (
+                    // Same edit UI as high priority tasks
                     <div className="space-y-3">
                       <input type="text" value={editText} onChange={(e) => setEditText(e.target.value)} className="w-full px-3 py-2 border rounded-lg text-sm md:text-base" placeholder="Edit task..." autoFocus />
-                      <div className="flex flex-col sm:flex-row gap-2">
-                        <select value={editCategory} onChange={(e) => setEditCategory(e.target.value)} className="flex-1 px-2 py-1 border rounded text-xs">
-                          {Object.entries(categories).map(([key, cat]) => (<option key={key} value={key}>{cat.icon} {cat.label}</option>))}
-                        </select>
-                        <select value={editPriority} onChange={(e) => setEditPriority(e.target.value)} className="flex-1 px-2 py-1 border rounded text-xs">
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                        <select value={editPriority} onChange={(e) => setEditPriority(e.target.value)} className="px-2 py-1 border rounded text-xs">
                           {Object.entries(priorities).map(([key, priority]) => (<option key={key} value={key}>{priority.icon} {priority.label}</option>))}
                         </select>
-                        <input type="date" value={editDeadline} onChange={(e) => setEditDeadline(e.target.value)} className="flex-1 px-2 py-1 border rounded text-xs" min={new Date().toISOString().split('T')[0]} disabled={editIsRecurring} />
+                        <input type="number" value={editXP} onChange={(e) => setEditXP(parseInt(e.target.value) || 50)} className="px-2 py-1 border rounded text-xs" placeholder="XP" />
+                        <input type="date" value={editDeadline} onChange={(e) => setEditDeadline(e.target.value)} className="px-2 py-1 border rounded text-xs" min={new Date().toISOString().split('T')[0]} disabled={editIsRecurring} />
+                        <input type="text" value={editNotes} onChange={(e) => setEditNotes(e.target.value)} className="px-2 py-1 border rounded text-xs" placeholder="Notes" />
                       </div>
+                      
+                      {/* Progress Tracking Edit Options */}
                       <div className="flex items-center gap-3">
                         <label className="flex items-center gap-2 cursor-pointer">
-                          <input type="checkbox" checked={editIsRecurring} onChange={(e) => setEditIsRecurring(e.target.checked)} className="w-4 h-4 text-purple-600 rounded" />
-                          <span className="text-sm font-medium text-purple-700 flex items-center gap-1">
-                            <RefreshCw className="h-3 w-3" />
-                            Recurring
-                          </span>
+                          <input type="checkbox" checked={editHasProgressTracking} onChange={(e) => setEditHasProgressTracking(e.target.checked)} className="w-4 h-4 text-indigo-600 rounded" />
+                          <span className="text-sm font-medium text-indigo-700">📊 Progress Tracking</span>
                         </label>
-                        {editIsRecurring && (
-                          <select value={editRecurrenceType} onChange={(e) => setEditRecurrenceType(e.target.value)} className="px-2 py-1 border rounded text-xs">
-                            {Object.entries(recurrenceOptions).map(([key, option]) => (<option key={key} value={key}>{option.icon} {option.label}</option>))}
-                          </select>
+                        {editHasProgressTracking && (
+                          <>
+                            <input type="number" value={editTargetValue} onChange={(e) => setEditTargetValue(e.target.value)} className="px-2 py-1 border rounded text-xs w-20" placeholder="Target" />
+                            <input type="text" value={editUnitType} onChange={(e) => setEditUnitType(e.target.value)} className="px-2 py-1 border rounded text-xs w-20" placeholder="Unit" />
+                          </>
                         )}
                       </div>
+                      
                       <div className="flex gap-2">
                         <button onClick={saveEdit} className="px-3 py-1 bg-green-500 text-white rounded text-xs hover:bg-green-600">✅ Save</button>
                         <button onClick={cancelEdit} className="px-3 py-1 bg-gray-500 text-white rounded text-xs hover:bg-gray-600">❌ Cancel</button>
                       </div>
                     </div>
                   ) : (
-                    <div className="flex items-center gap-3 md:gap-4">
-                      <button onClick={() => toggleTask(task.id)} className="text-gray-400 hover:text-green-600 transition-all flex-shrink-0">
-                        <CheckCircle className="h-5 w-5 md:h-6 md:w-6" />
-                      </button>
-                      <div className="flex-1">
-                        <span className="text-sm md:text-lg block">{task.text}</span>
-                        <div className="flex items-center gap-2 mt-1">
-                          {task.isRecurring && (
-                            <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-bold text-white ${recurrenceOptions[task.recurrenceType].color}`}>
-                              <RefreshCw className="h-3 w-3" />
-                              {recurrenceOptions[task.recurrenceType].label}
-                            </span>
+                    <div>
+                      <div className="flex items-center gap-3 md:gap-4">
+                        <button 
+                          onClick={() => toggleTask(task.id)} 
+                          className={`transition-all flex-shrink-0 ${
+                            task.hasProgressTracking && task.currentProgress < task.targetValue
+                              ? 'text-gray-300 cursor-not-allowed'
+                              : 'text-gray-400 hover:text-green-600'
+                          }`}
+                          disabled={task.hasProgressTracking && task.currentProgress < task.targetValue}
+                        >
+                          <CheckCircle className="h-5 w-5 md:h-6 md:w-6" />
+                        </button>
+                        <div className="flex-1">
+                          <span className="text-sm md:text-lg block">{task.text}</span>
+                          
+                          {/* Progress Bar */}
+                          {task.hasProgressTracking && (
+                            <div className="mt-2 mb-2">
+                              <div className="flex justify-between items-center mb-1">
+                                <span className="text-xs font-medium text-gray-600">
+                                  Progress: {task.currentProgress || 0}/{task.targetValue} {task.unitType}
+                                </span>
+                                <span className="text-xs font-bold text-gray-700">
+                                  {progressPercent}%
+                                </span>
+                              </div>
+                              <div className="w-full bg-gray-200 rounded-full h-2">
+                                <div 
+                                  className={`h-2 rounded-full transition-all duration-300 ${
+                                    progressPercent === 100 
+                                      ? 'bg-gradient-to-r from-green-500 to-emerald-500' 
+                                      : 'bg-gradient-to-r from-blue-500 to-purple-500'
+                                  }`}
+                                  style={{width: `${progressPercent}%`}}
+                                />
+                              </div>
+                              
+                              {/* Quick Progress Buttons */}
+                              <div className="flex gap-1 mt-2">
+                                <button onClick={() => quickIncrementProgress(task.id, 100)} className="px-2 py-1 bg-blue-100 hover:bg-blue-200 rounded text-xs font-medium text-blue-700">
+                                  +100
+                                </button>
+                                <button onClick={() => quickIncrementProgress(task.id, 500)} className="px-2 py-1 bg-blue-100 hover:bg-blue-200 rounded text-xs font-medium text-blue-700">
+                                  +500
+                                </button>
+                                <button onClick={() => quickIncrementProgress(task.id, 1000)} className="px-2 py-1 bg-blue-100 hover:bg-blue-200 rounded text-xs font-medium text-blue-700">
+                                  +1000
+                                </button>
+                                <button onClick={() => openProgressModal(task.id)} className="px-2 py-1 bg-purple-100 hover:bg-purple-200 rounded text-xs font-medium text-purple-700">
+                                  Custom
+                                </button>
+                              </div>
+                            </div>
                           )}
-                          {task.deadline && (
-                            <span className={`inline-block px-2 py-1 rounded text-xs font-bold ${deadlineInfo.color}`}>📅 {deadlineInfo.text}</span>
-                          )}
+                          
+                          <div className="flex items-center gap-2 mt-1">
+                            {task.isRecurring && (
+                              <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-bold text-white ${recurrenceOptions[task.recurrenceType].color}`}>
+                                <RefreshCw className="h-3 w-3" />
+                                {recurrenceOptions[task.recurrenceType].label}
+                                {task.streak > 0 && ` • ${task.streak} streak`}
+                              </span>
+                            )}
+                            {task.deadline && (
+                              <span className={`inline-block px-2 py-1 rounded text-xs font-bold ${deadlineInfo.color}`}>
+                                📅 {deadlineInfo.text}
+                              </span>
+                            )}
+                            {task.notes && (
+                              <span className="inline-block px-2 py-1 rounded text-xs bg-gray-100 text-gray-600">
+                                📝 {task.notes}
+                              </span>
+                            )}
+                          </div>
                         </div>
-                      </div>
-                      <span className={`px-2 md:px-3 py-1 rounded-full text-xs md:text-sm ${categories[task.category].color}`}>{categories[task.category].icon}</span>
-                      <span className={`px-2 py-1 rounded-full text-xs ${priorities[task.priority].color}`}>{priorities[task.priority].icon}</span>
-                      <span className="bg-gray-100 text-gray-600 px-2 py-1 rounded-full text-xs">+{task.xp}</span>
-                      <div className="flex gap-1">
-                        <button onClick={() => startEditTask(task)} className="px-2 py-1 bg-blue-500 text-white text-xs rounded hover:bg-blue-600 transition-all" title="Edit task"><Edit3 className="h-3 w-3" /></button>
-                        <button onClick={() => startFocusSession(task.text)} className="px-3 py-2 bg-gray-500 text-white text-xs rounded-lg hover:bg-gray-600 transition-all flex items-center gap-1"><Clock className="h-3 w-3" />Focus</button>
-                        <button onClick={() => deleteTask(task.id)} className="px-2 py-1 bg-red-500 text-white text-xs rounded hover:bg-red-600 transition-all" title="Delete task">🗑️</button>
+                        <span className={`px-2 py-1 rounded-full text-xs ${priorities[task.priority].color}`}>
+                          {priorities[task.priority].icon}
+                        </span>
+                        <span className="bg-gray-100 text-gray-600 px-2 py-1 rounded-full text-xs">
+                          +{task.xp} XP
+                        </span>
+                        <div className="flex gap-1">
+                          <button onClick={() => startEditTask(task)} className="px-2 py-1 bg-blue-500 text-white text-xs rounded hover:bg-blue-600 transition-all">
+                            <Edit3 className="h-3 w-3" />
+                          </button>
+                          <button onClick={() => startFocusSession(task.text)} className="px-3 py-2 bg-gray-500 text-white text-xs rounded hover:bg-gray-600 transition-all">
+                            <Clock className="h-3 w-3" />
+                          </button>
+                          <button onClick={() => deleteTask(task.id)} className="px-2 py-1 bg-red-500 text-white text-xs rounded hover:bg-red-600 transition-all">
+                            🗑️
+                          </button>
+                        </div>
                       </div>
                     </div>
                   )}
@@ -1136,7 +1664,7 @@ const TimeManager = () => {
       {/* Completed Tasks */}
       {completedTasks.length > 0 && (
         <div className="mb-6">
-          <h3 className="text-lg md:text-xl font-bold mb-4 text-green-600">🎉 Completed Today</h3>
+          <h3 className="text-lg md:text-xl font-bold mb-4 text-green-600">✅ Completed</h3>
           <div className="space-y-2">
             {completedTasks.map(task => (
               <div key={task.id} className="flex items-center gap-3 md:gap-4 p-3 md:p-4 bg-green-50 border border-green-200 rounded-xl opacity-75">
@@ -1150,21 +1678,50 @@ const TimeManager = () => {
                     </span>
                   )}
                 </div>
-                <span className="bg-green-100 text-green-700 px-2 py-1 rounded-full text-xs font-bold">+{task.xp} ✨</span>
+                <span className="bg-green-100 text-green-700 px-2 py-1 rounded-full text-xs font-bold">
+                  +{task.xp} ✨
+                </span>
               </div>
             ))}
           </div>
         </div>
       )}
 
-      {/* Bottom motivation */}
-      <div className="mt-8 text-center p-4 md:p-6 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-xl shadow-lg">
-        <h3 className="text-lg md:text-2xl font-bold mb-2">🌟 You're Building Your Dream Life!</h3>
-        <p className="text-sm md:text-lg mb-4">Every Task = One Step Closer to {targets.salaryTarget}! 💪</p>
-        <div className="flex flex-wrap justify-center gap-2 text-xs md:text-sm">
-          <span className="bg-white/20 px-3 py-1 rounded-full">🏢 {targets.companyType}</span>
-          <span className="bg-white/20 px-3 py-1 rounded-full">💰 {targets.salaryTarget}</span>
-          <span className="bg-white/20 px-3 py-1 rounded-full">⏰ {targets.timeline}</span>
+      {/* All Goals Overview */}
+      <div className="mt-8 bg-white/80 backdrop-blur rounded-xl p-6 shadow-lg">
+        <h3 className="text-xl font-bold mb-4">📊 All Goals Overview</h3>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {goals.map(goal => {
+            const stats = getGoalStats(goal.id);
+            return (
+              <div key={goal.id} className={`${goal.color} text-white rounded-lg p-4 shadow-md`}>
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="text-2xl">{goal.icon}</span>
+                  <h4 className="font-semibold">{goal.name}</h4>
+                </div>
+                <div className="space-y-1 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-white/80">Progress:</span>
+                    <span className="font-bold">{stats.progress}%</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-white/80">Tasks:</span>
+                    <span className="font-bold">{stats.completed}/{stats.total}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-white/80">XP Earned:</span>
+                    <span className="font-bold">{stats.xpEarned}</span>
+                  </div>
+                </div>
+                <div className="mt-3 bg-white/20 rounded-full h-2">
+                  <div 
+                    className="bg-white h-2 rounded-full transition-all duration-300" 
+                    style={{width: `${stats.progress}%`}}
+                  />
+                </div>
+              </div>
+            );
+          })}
         </div>
       </div>
     </div>
