@@ -584,6 +584,105 @@ const TimeManager = () => {
     }
   };
 
+  // Function to revoke (uncomplete) a task
+  const revokeTask = (taskId) => {
+    const task = tasks.find(t => t.id === taskId);
+    if (!task || !task.completed) return;
+    
+    // Confirm revoke action
+    if (window.confirm(`Are you sure you want to mark "${task.text}" as incomplete? This will deduct ${task.xp} XP.`)) {
+      setTasks(prev => prev.map(t => {
+        if (t.id === taskId) {
+          // Reset progress if task has tracking
+          const updatedTask = {
+            ...t,
+            completed: false,
+            // Keep progress for tracked tasks, but mark incomplete
+            currentProgress: t.hasProgressTracking ? t.currentProgress : 0
+          };
+          
+          // If it's a recurring task, adjust the streak
+          if (t.isRecurring && t.streak > 0) {
+            updatedTask.streak = Math.max(0, t.streak - 1);
+            updatedTask.lastCompleted = null;
+          }
+          
+          return updatedTask;
+        }
+        return t;
+      }));
+      
+      // Deduct XP and update counters
+      setTotalXP(prev => Math.max(0, prev - task.xp));
+      setCompletedToday(prev => Math.max(0, prev - 1));
+      
+      // Add notification
+      if (typeof addNotification === 'function') {
+        addNotification(`Task revoked: "${task.text}" (-${task.xp} XP)`, 'info', '↩️');
+      }
+    }
+  };
+
+  // Function to permanently delete a completed task
+  const deleteCompletedTask = (taskId) => {
+    const task = tasks.find(t => t.id === taskId);
+    if (!task) return;
+    
+    if (window.confirm(`Are you sure you want to permanently delete "${task.text}"? ${task.completed ? `This will deduct ${task.xp} XP.` : ''}`)) {
+      setTasks(prev => prev.filter(t => t.id !== taskId));
+      
+      // If task was completed, deduct XP
+      if (task.completed) {
+        setTotalXP(prev => Math.max(0, prev - task.xp));
+        setCompletedToday(prev => Math.max(0, prev - 1));
+      }
+      
+      // Add notification
+      if (typeof addNotification === 'function') {
+        addNotification(`Task deleted: "${task.text}"`, 'info', '🗑️');
+      }
+    }
+  };
+
+  // Function to bulk manage completed tasks
+  const bulkManageCompletedTasks = (action) => {
+    const completedTasksList = tasks.filter(t => t.completed);
+    
+    if (completedTasksList.length === 0) {
+      alert('No completed tasks to manage.');
+      return;
+    }
+    
+    if (action === 'delete-all') {
+      if (window.confirm(`Delete ALL ${completedTasksList.length} completed tasks? This will deduct ${completedTasksList.reduce((sum, t) => sum + t.xp, 0)} XP.`)) {
+        const totalXPToDeduct = completedTasksList.reduce((sum, t) => sum + t.xp, 0);
+        setTasks(prev => prev.filter(t => !t.completed));
+        setTotalXP(prev => Math.max(0, prev - totalXPToDeduct));
+        setCompletedToday(0);
+        
+        if (typeof addNotification === 'function') {
+          addNotification(`Deleted ${completedTasksList.length} completed tasks`, 'info', '🗑️');
+        }
+      }
+    } else if (action === 'revoke-all') {
+      if (window.confirm(`Mark ALL ${completedTasksList.length} completed tasks as incomplete? This will deduct ${completedTasksList.reduce((sum, t) => sum + t.xp, 0)} XP.`)) {
+        const totalXPToDeduct = completedTasksList.reduce((sum, t) => sum + t.xp, 0);
+        setTasks(prev => prev.map(t => {
+          if (t.completed) {
+            return { ...t, completed: false };
+          }
+          return t;
+        }));
+        setTotalXP(prev => Math.max(0, prev - totalXPToDeduct));
+        setCompletedToday(0);
+        
+        if (typeof addNotification === 'function') {
+          addNotification(`Revoked ${completedTasksList.length} completed tasks`, 'info', '↩️');
+        }
+      }
+    }
+  };
+
   const exportData = () => {
     const data = {
       goals,
@@ -1661,31 +1760,210 @@ const TimeManager = () => {
         </div>
       )}
 
-      {/* Completed Tasks */}
+      <button
+        onClick={() => setShowCompletedTasksManager(true)}
+        className="px-4 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg text-sm font-medium text-gray-700"
+      >
+        Manage Completed Tasks
+      </button>
+
+      {/* Completed Tasks - ENHANCED with Delete & Revoke */}
       {completedTasks.length > 0 && (
         <div className="mb-6">
-          <h3 className="text-lg md:text-xl font-bold mb-4 text-green-600">✅ Completed</h3>
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg md:text-xl font-bold text-green-600 flex items-center gap-2">
+              ✅ Completed Tasks ({completedTasks.length})
+            </h3>
+            
+            {/* Bulk Actions Dropdown */}
+            <div className="relative group">
+              <button className="px-3 py-1 bg-gray-100 hover:bg-gray-200 rounded-lg text-sm font-medium text-gray-700 flex items-center gap-1">
+                Bulk Actions
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+              </button>
+              
+              <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-200 hidden group-hover:block z-10">
+                <button
+                  onClick={() => bulkManageCompletedTasks('revoke-all')}
+                  className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-yellow-50 hover:text-yellow-700 flex items-center gap-2"
+                >
+                  ↩️ Revoke All
+                </button>
+                <button
+                  onClick={() => bulkManageCompletedTasks('delete-all')}
+                  className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-red-50 hover:text-red-700 flex items-center gap-2"
+                >
+                  🗑️ Delete All
+                </button>
+              </div>
+            </div>
+          </div>
+          
           <div className="space-y-2">
             {completedTasks.map(task => (
-              <div key={task.id} className="flex items-center gap-3 md:gap-4 p-3 md:p-4 bg-green-50 border border-green-200 rounded-xl opacity-75">
-                <CheckCircle className="h-5 w-5 md:h-6 md:w-6 text-green-600 fill-current" />
+              <div key={task.id} className="group flex items-center gap-3 md:gap-4 p-3 md:p-4 bg-green-50 border border-green-200 rounded-xl transition-all hover:bg-green-100">
+                <CheckCircle className="h-5 w-5 md:h-6 md:w-6 text-green-600 fill-current flex-shrink-0" />
+                
                 <div className="flex-1">
                   <span className="line-through text-gray-600 text-sm md:text-lg block">{task.text}</span>
-                  {task.isRecurring && (
-                    <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium text-green-700 bg-green-100 mt-1">
-                      <RefreshCw className="h-3 w-3" />
-                      {recurrenceOptions[task.recurrenceType].label} - Will reset automatically
+                  
+                  {/* Task Metadata */}
+                  <div className="flex flex-wrap items-center gap-2 mt-1">
+                    {task.isRecurring && (
+                      <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium text-green-700 bg-green-100">
+                        <RefreshCw className="h-3 w-3" />
+                        {recurrenceOptions[task.recurrenceType].label}
+                        {task.streak > 0 && ` • ${task.streak} streak`}
+                      </span>
+                    )}
+                    
+                    {task.hasProgressTracking && (
+                      <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium text-blue-700 bg-blue-100">
+                        📊 {task.currentProgress}/{task.targetValue} {task.unitType}
+                      </span>
+                    )}
+                    
+                    {task.notes && (
+                      <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs text-gray-600 bg-gray-100">
+                        📝 {task.notes}
+                      </span>
+                    )}
+                    
+                    <span className="text-xs text-gray-500">
+                      Completed {(() => {
+                        const completedDate = task.lastCompleted ? new Date(task.lastCompleted) : new Date();
+                        const today = new Date();
+                        const diffTime = today - completedDate;
+                        const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+                        
+                        if (diffDays === 0) return 'today';
+                        if (diffDays === 1) return 'yesterday';
+                        if (diffDays < 7) return `${diffDays} days ago`;
+                        return completedDate.toLocaleDateString();
+                      })()}
                     </span>
-                  )}
+                  </div>
                 </div>
+                
+                {/* XP Badge */}
                 <span className="bg-green-100 text-green-700 px-2 py-1 rounded-full text-xs font-bold">
                   +{task.xp} ✨
                 </span>
+                
+                {/* Action Buttons - Hidden by default, shown on hover */}
+                <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <button
+                    onClick={() => revokeTask(task.id)}
+                    className="px-2 py-1 bg-yellow-500 text-white text-xs rounded hover:bg-yellow-600 transition-all"
+                    title="Mark as incomplete"
+                  >
+                    ↩️ Revoke
+                  </button>
+                  <button
+                    onClick={() => deleteCompletedTask(task.id)}
+                    className="px-2 py-1 bg-red-500 text-white text-xs rounded hover:bg-red-600 transition-all"
+                    title="Delete permanently"
+                  >
+                    🗑️ Delete
+                  </button>
+                </div>
               </div>
             ))}
           </div>
+          
+          {/* Summary Stats */}
+          <div className="mt-4 p-3 bg-green-100 rounded-lg">
+            <div className="flex justify-between items-center text-sm">
+              <span className="text-green-700 font-medium">
+                Total XP from completed tasks:
+              </span>
+              <span className="text-green-800 font-bold">
+                {completedTasks.reduce((sum, task) => sum + task.xp, 0)} XP
+              </span>
+            </div>
+          </div>
         </div>
       )}
+
+      {/* Completed Tasks Management Modal - Optional Advanced UI */}
+      {/* {showCompletedTasksManager && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl max-w-4xl w-full p-6 max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-2xl font-bold">📋 Manage Completed Tasks</h2>
+              <button onClick={() => setShowCompletedTasksManager(false)} className="p-2 hover:bg-gray-100 rounded-lg">
+                <X className="h-5 w-5" />
+              </button>
+            </div> */}
+            
+            {/* Filter Options */}
+            {/* <div className="flex gap-2 mb-4">
+              <button className="px-3 py-1 bg-blue-100 text-blue-700 rounded-lg text-sm font-medium">
+                All ({completedTasks.length})
+              </button>
+              <button className="px-3 py-1 bg-gray-100 text-gray-700 rounded-lg text-sm font-medium">
+                Today ({completedTasks.filter(t => {
+                  const date = t.lastCompleted ? new Date(t.lastCompleted) : new Date();
+                  return date.toDateString() === new Date().toDateString();
+                }).length})
+              </button>
+              <button className="px-3 py-1 bg-gray-100 text-gray-700 rounded-lg text-sm font-medium">
+                This Week ({completedTasks.filter(t => {
+                  const date = t.lastCompleted ? new Date(t.lastCompleted) : new Date();
+                  const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+                  return date >= weekAgo;
+                }).length})
+              </button>
+            </div> */}
+            
+            {/* Task List with Checkboxes for Bulk Selection */}
+            {/* <div className="space-y-2 mb-4">
+              {completedTasks.map(task => (
+                <div key={task.id} className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg hover:bg-gray-100">
+                  <input type="checkbox" className="w-4 h-4 text-blue-600 rounded" />
+                  <div className="flex-1">
+                    <p className="font-medium">{task.text}</p>
+                    <p className="text-xs text-gray-500">
+                      {task.xp} XP • Completed {new Date(task.lastCompleted || Date.now()).toLocaleDateString()}
+                    </p>
+                  </div>
+                  <div className="flex gap-1">
+                    <button
+                      onClick={() => revokeTask(task.id)}
+                      className="px-2 py-1 bg-yellow-100 text-yellow-700 text-xs rounded hover:bg-yellow-200"
+                    >
+                      Revoke
+                    </button>
+                    <button
+                      onClick={() => deleteCompletedTask(task.id)}
+                      className="px-2 py-1 bg-red-100 text-red-700 text-xs rounded hover:bg-red-200"
+                    >
+                      Delete
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div> */}
+            
+            {/* Bulk Actions Bar */}
+            {/* <div className="flex justify-between items-center p-3 bg-gray-100 rounded-lg">
+              <span className="text-sm text-gray-600">
+                Selected: 0 tasks
+              </span>
+              <div className="flex gap-2">
+                <button className="px-3 py-1 bg-yellow-500 text-white rounded text-sm hover:bg-yellow-600">
+                  Revoke Selected
+                </button>
+                <button className="px-3 py-1 bg-red-500 text-white rounded text-sm hover:bg-red-600">
+                  Delete Selected
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )} */}
 
       {/* All Goals Overview */}
       <div className="mt-8 bg-white/80 backdrop-blur rounded-xl p-6 shadow-lg">
