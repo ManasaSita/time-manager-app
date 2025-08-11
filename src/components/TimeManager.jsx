@@ -1804,7 +1804,7 @@ const TimeManager = () => {
           <div className="space-y-2">
             {completedTasks.map(task => (
               <div key={task.id} className="group flex items-center gap-3 md:gap-4 p-3 md:p-4 bg-green-50 border border-green-200 rounded-xl transition-all hover:bg-green-100">
-                <CheckCircle className="h-5 w-5 md:h-6 md:w-6 text-green-600 fill-current flex-shrink-0" />
+                <CheckCircle className="h-5 w-5 md:h-6 md:w-6 text-green-600 flex-shrink-0" />
                 
                 <div className="flex-1">
                   <span className="line-through text-gray-600 text-sm md:text-lg block">{task.text}</span>
