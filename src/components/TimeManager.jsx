@@ -2,7 +2,7 @@
 // This is a complete part - copy this entire section
 
 import React, { useState, useEffect } from 'react';
-import { Clock, Play, Pause, CheckCircle, Plus, Calendar, Target, Zap, Trophy, Star, Flame, TrendingUp, DollarSign, Code, Users, BookOpen, Award, Settings, X, Edit3, RefreshCw, Repeat, Trash2, FolderPlus, Folder } from 'lucide-react';
+import { Clock, Play, Pause, CheckCircle, Plus, Calendar, Target, Zap, Trophy, Star, Flame, TrendingUp, DollarSign, Code, Users, BookOpen, Award, Settings, X, Edit3, RefreshCw, Repeat, Trash2, FolderPlus, Folder, ChevronDown, ChevronRight, GripVertical } from 'lucide-react';
 
 // Custom hook for localStorage
 const useLocalStorage = (key, initialValue) => {
@@ -76,6 +76,11 @@ const TimeManager = () => {
   const [editingGoal, setEditingGoal] = useState(null);
   const [showSettings, setShowSettings] = useState(false);
   const [isFullScreen, setIsFullScreen] = useState(false);
+  // const [showSettings, setShowSettings] = useState(false);
+  const [showCompletedTasksManager, setShowCompletedTasksManager] = useState(false); // ADD THIS LINE
+  // const [isFullScreen, setIsFullScreen] = useState(false);
+  const [showAnalyticsModal, setShowAnalyticsModal] = useState(false);
+  const [analyticsGoalId, setAnalyticsGoalId] = useState(null);
   
   // New goal form state
   const [newGoalName, setNewGoalName] = useState('');
@@ -110,6 +115,14 @@ const TimeManager = () => {
   const [showProgressModal, setShowProgressModal] = useState(false);
   const [progressTaskId, setProgressTaskId] = useState(null);
   const [progressUpdateValue, setProgressUpdateValue] = useState('');
+  const [trackingType, setTrackingType] = useState('units'); // 'units' or 'subtasks'
+  const [subtasks, setSubtasks] = useState('');
+  const [subtaskInput, setSubtaskInput] = useState('');
+  const [subtasksList, setSubtasksList] = useState([]);
+  const [expandedTasks, setExpandedTasks] = useState(new Set());
+  const [draggedSubtask, setDraggedSubtask] = useState(null);
+  const [draggedTaskId, setDraggedTaskId] = useState(null);
+  const [dragOverTaskId, setDragOverTaskId] = useState(null);
 
   // Edit task state - ENHANCED with tracking
   const [editingTask, setEditingTask] = useState(null);
@@ -178,28 +191,53 @@ const TimeManager = () => {
     setLevel(newLevel);
   }, [totalXP]);
 
-  // Streak management
+  // Streak management with proper date tracking
   useEffect(() => {
     const checkAndUpdateStreak = () => {
       const today = new Date().toDateString();
       const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toDateString();
       
+      // Check if we've completed any tasks today
+      const todayCompletedTasks = tasks.filter(task => {
+        if (!task.completed) return false;
+        const completedDate = task.completedDate || task.lastCompleted;
+        if (!completedDate) return false;
+        return new Date(completedDate).toDateString() === today;
+      });
+      
+      // Check if we completed tasks yesterday
+      const yesterdayCompletedTasks = tasks.filter(task => {
+        if (!task.completed) return false;
+        const completedDate = task.completedDate || task.lastCompleted;
+        if (!completedDate) return false;
+        return new Date(completedDate).toDateString() === yesterday;
+      });
+      
       if (lastActiveDate !== today) {
-        if (lastActiveDate === yesterday && todayTasksCompleted) {
+        if (lastActiveDate === yesterday && yesterdayCompletedTasks.length > 0 && todayCompletedTasks.length > 0) {
+          // Continue streak
           setStreak(prev => prev + 1);
-        } else if (lastActiveDate !== yesterday) {
+        } else if (todayCompletedTasks.length > 0) {
+          // Start new streak
           setStreak(1);
+        } else {
+          // No tasks completed today yet, maintain streak if yesterday had tasks
+          if (lastActiveDate === yesterday && yesterdayCompletedTasks.length > 0) {
+            // Keep current streak, will increment when user completes a task today
+          } else {
+            // Reset streak
+            setStreak(0);
+          }
         }
-        setCompletedToday(0);
-        setTodayTasksCompleted(false);
         setLastActiveDate(today);
+        setCompletedToday(todayCompletedTasks.length);
       }
     };
 
     checkAndUpdateStreak();
-    const interval = setInterval(checkAndUpdateStreak, 60000);
+    const interval = setInterval(checkAndUpdateStreak, 60000); // Check every minute
     return () => clearInterval(interval);
-  }, [lastActiveDate, todayTasksCompleted, setStreak, setCompletedToday, setTodayTasksCompleted, setLastActiveDate]);
+  }, [tasks, lastActiveDate, setStreak, setCompletedToday, setLastActiveDate]);
 
   // Timer logic
   useEffect(() => {
@@ -210,13 +248,46 @@ const TimeManager = () => {
       }, 1000);
     } else if (timer === 0) {
       setIsRunning(false);
-      setTotalXP(prev => prev + 25);
+      setTotalXP(prev => prev + 150);
       setIsFullScreen(false);
-      alert('🎉 Focus session complete! +25 XP earned!');
+      alert('🎉 Focus session complete! +150 XP earned!');
       setTimer(25 * 60);
     }
     return () => clearInterval(interval);
   }, [isRunning, timer, setTotalXP]);
+
+  // Load scheduled recurring tasks at midnight or on app load
+  useEffect(() => {
+    const loadScheduledTasks = () => {
+      const now = new Date();
+      const scheduledTasks = JSON.parse(localStorage.getItem('scheduledRecurringTasks') || '[]');
+      const tasksToAdd = [];
+      const remainingTasks = [];
+      
+      scheduledTasks.forEach(task => {
+        const scheduledDate = new Date(task.scheduledFor);
+        if (scheduledDate <= now) {
+          // Remove scheduledFor property and add to current tasks
+          const { scheduledFor, ...taskWithoutSchedule } = task;
+          tasksToAdd.push(taskWithoutSchedule);
+        } else {
+          remainingTasks.push(task);
+        }
+      });
+      
+      if (tasksToAdd.length > 0) {
+        setTasks(prev => [...prev, ...tasksToAdd]);
+        localStorage.setItem('scheduledRecurringTasks', JSON.stringify(remainingTasks));
+      }
+    };
+    
+    loadScheduledTasks();
+    
+    // Check every minute for tasks that should be loaded
+    const interval = setInterval(loadScheduledTasks, 60000);
+    
+    return () => clearInterval(interval);
+  }, [setTasks]);
 
   // Helper functions
   const formatTime = (seconds) => {
@@ -347,12 +418,17 @@ const TimeManager = () => {
         notes: taskNotes,
         streak: 0,
         lastCompleted: null,
-        // NEW: Progress tracking fields
+        createdAt: new Date().toISOString(),
+        // Progress tracking fields
         hasProgressTracking: hasProgressTracking,
-        targetValue: hasProgressTracking ? parseFloat(targetValue) || 0 : null,
+        trackingType: hasProgressTracking ? trackingType : null,
+        // For units tracking
+        targetValue: hasProgressTracking && trackingType === 'units' ? parseFloat(targetValue) || 0 : null,
         currentProgress: 0,
-        unitType: hasProgressTracking ? unitType : null,
-        progressHistory: [] // Track progress updates over time
+        unitType: hasProgressTracking && trackingType === 'units' ? unitType : null,
+        // For subtasks tracking
+        subtasks: hasProgressTracking && trackingType === 'subtasks' ? subtasksList : null,
+        progressHistory: []
       };
       
       setTasks(prev => [...prev, newTaskObj]);
@@ -368,6 +444,9 @@ const TimeManager = () => {
       setTargetValue('');
       setCurrentProgress(0);
       setUnitType('');
+      setTrackingType('units');
+      setSubtasksList([]);
+      setSubtaskInput('');
     }
   };
 
@@ -444,20 +523,32 @@ const TimeManager = () => {
           if (task.isRecurring) {
             updated.streak = (task.streak || 0) + 1;
             updated.lastCompleted = new Date().toISOString();
+            updated.completedDate = new Date().toISOString(); // Track when it was completed
             
-            // Create next occurrence
-            setTimeout(() => {
-              const newDeadline = calculateNextDeadline(task.recurrenceType);
-              setTasks(prevTasks => [...prevTasks, {
+            // Create next occurrence for tomorrow
+            const tomorrow = new Date();
+            tomorrow.setDate(tomorrow.getDate() + 1);
+            tomorrow.setHours(0, 0, 0, 0);
+            
+            const nextDeadline = calculateNextDeadline(task.recurrenceType);
+            
+            // Schedule the creation of new task for midnight
+            const timeUntilMidnight = tomorrow.getTime() - Date.now();
+            
+            if (timeUntilMidnight > 0) {
+              // Store in localStorage to create at midnight or on next load
+              const scheduledTasks = JSON.parse(localStorage.getItem('scheduledRecurringTasks') || '[]');
+              scheduledTasks.push({
                 ...task,
                 id: Date.now() + Math.random(),
                 completed: false,
-                deadline: newDeadline,
-                lastCompleted: null,
-                currentProgress: 0, // Reset progress for recurring tasks
-                progressHistory: []
-              }]);
-            }, 100);
+                deadline: nextDeadline,
+                currentProgress: 0,
+                progressHistory: [],
+                scheduledFor: tomorrow.toISOString()
+              });
+              localStorage.setItem('scheduledRecurringTasks', JSON.stringify(scheduledTasks));
+            }
           }
         } else if (!updated.completed && task.completed) {
           setCompletedToday(prev => Math.max(0, prev - 1));
@@ -467,6 +558,128 @@ const TimeManager = () => {
       }
       return task;
     }));
+  };
+
+  const toggleSubtask = (taskId, subtaskId) => {
+    setTasks(prev => prev.map(task => {
+      if (task.id === taskId && task.subtasks) {
+        const updatedSubtasks = task.subtasks.map(sub => 
+          sub.id === subtaskId ? { ...sub, completed: !sub.completed } : sub
+        );
+        
+        const completedCount = updatedSubtasks.filter(sub => sub.completed).length;
+        const totalCount = updatedSubtasks.length;
+        const allCompleted = completedCount === totalCount;
+        
+        // Auto-complete main task if all subtasks are done
+        if (allCompleted && !task.completed) {
+          setCompletedToday(prev => prev + 1);
+          setTotalXP(prev => prev + task.xp);
+          updateDailyActivity();
+        }
+        
+        return {
+          ...task,
+          subtasks: updatedSubtasks,
+          currentProgress: completedCount,
+          targetValue: totalCount,
+          completed: task.completed || allCompleted
+        };
+      }
+      return task;
+    }));
+  };
+
+  const toggleExpandTask = (taskId) => {
+    setExpandedTasks(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(taskId)) {
+        newSet.delete(taskId);
+      } else {
+        newSet.add(taskId);
+      }
+      return newSet;
+    });
+  };
+
+  const handleTaskDragStart = (taskId) => {
+    setDraggedTaskId(taskId);
+  };
+
+  const handleTaskDragOver = (e, taskId) => {
+    e.preventDefault();
+    if (taskId !== draggedTaskId) {
+      setDragOverTaskId(taskId);
+    }
+  };
+
+  const handleTaskDrop = (e, dropZone) => {
+    e.preventDefault();
+    
+    if (!draggedTaskId) return;
+    
+    setTasks(prevTasks => {
+      const newTasks = [...prevTasks];
+      const draggedTask = newTasks.find(t => t.id === draggedTaskId);
+      
+      if (!draggedTask) return prevTasks;
+      
+      // Update priority based on drop zone
+      if (dropZone === 'high-priority') {
+        draggedTask.priority = 'high';
+      } else if (dropZone === 'other-tasks') {
+        draggedTask.priority = draggedTask.priority === 'high' ? 'medium' : draggedTask.priority;
+      }
+      
+      // If dropping on a specific task, reorder
+      if (dragOverTaskId && dragOverTaskId !== draggedTaskId) {
+        const draggedIndex = newTasks.findIndex(t => t.id === draggedTaskId);
+        const targetIndex = newTasks.findIndex(t => t.id === dragOverTaskId);
+        
+        if (draggedIndex !== -1 && targetIndex !== -1) {
+          newTasks.splice(draggedIndex, 1);
+          newTasks.splice(targetIndex, 0, draggedTask);
+        }
+      }
+      
+      return newTasks;
+    });
+    
+    setDraggedTaskId(null);
+    setDragOverTaskId(null);
+  };
+
+  const handleTaskDragEnd = () => {
+    setDraggedTaskId(null);
+    setDragOverTaskId(null);
+  };
+
+  // For subtasks drag and drop
+  const handleSubtaskDragStart = (e, taskId, subtaskIndex) => {
+    e.stopPropagation();
+    setDraggedSubtask({ taskId, subtaskIndex });
+  };
+
+  const handleSubtaskDrop = (e, taskId, targetIndex) => {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    if (!draggedSubtask || draggedSubtask.taskId !== taskId) {
+      setDraggedSubtask(null);
+      return;
+    }
+    
+    setTasks(prevTasks => prevTasks.map(task => {
+      if (task.id === taskId && task.subtasks) {
+        const newSubtasks = [...task.subtasks];
+        const [draggedItem] = newSubtasks.splice(draggedSubtask.subtaskIndex, 1);
+        newSubtasks.splice(targetIndex, 0, draggedItem);
+        return { ...task, subtasks: newSubtasks };
+      }
+      return task;
+    }));
+    
+    setDraggedSubtask(null);
   };
 
   const startEditTask = (task) => {
@@ -702,10 +915,408 @@ const TimeManager = () => {
     link.click();
   };
 
-// END OF PART 2 - Continue to Part 3 for JSX
+  const TaskItem = ({ task, isPriority = false }) => {
+    const deadlineInfo = getDeadlineStatus(task.deadline);
+    const isEditing = editingTask === task.id;
+    const isExpanded = expandedTasks.has(task.id);
+    const isDragging = draggedTaskId === task.id;
+    const isDragOver = dragOverTaskId === task.id;
+    
+    // Calculate progress for subtasks
+    const subtaskProgress = task.subtasks 
+      ? task.subtasks.filter(s => s.completed).length 
+      : 0;
+    const subtaskTotal = task.subtasks ? task.subtasks.length : 0;
+    const subtaskPercentage = subtaskTotal > 0 
+      ? Math.round((subtaskProgress / subtaskTotal) * 100) 
+      : 0;
+    
+    const progressPercent = task.hasProgressTracking 
+      ? (task.trackingType === 'subtasks' 
+          ? subtaskPercentage 
+          : getProgressPercentage(task.currentProgress || 0, task.targetValue))
+      : 0;
+    
+    if (isEditing) {
+      // Edit mode UI (keep existing)
+      return (
+        <div className={`${
+          isPriority 
+            ? 'bg-gradient-to-r from-red-50 to-pink-50 border-2 border-red-200' 
+            : 'bg-white/60 backdrop-blur border border-gray-200'
+        } rounded-xl shadow-sm p-3 md:p-4`}>
+          {/* Keep existing edit UI */}
+        </div>
+      );
+    }
+    
+    return (
+      <div
+        draggable="true"
+        onDragStart={() => handleTaskDragStart(task.id)}
+        onDragOver={(e) => handleTaskDragOver(e, task.id)}
+        onDrop={(e) => handleTaskDrop(e, isPriority ? 'high-priority' : 'other-tasks')}
+        onDragEnd={handleTaskDragEnd}
+        className={`${
+          isPriority 
+            ? 'bg-gradient-to-r from-red-50 to-pink-50 border-2 border-red-200' 
+            : 'bg-white/60 backdrop-blur border border-gray-200'
+        } rounded-xl shadow-sm p-3 md:p-4 transition-all hover:shadow-md ${
+          isDragging ? 'opacity-50 cursor-grabbing' : 'cursor-grab'
+        } ${isDragOver ? 'ring-2 ring-blue-400 scale-[1.02]' : ''}`}
+      >
+        <div className="flex items-start gap-2 md:gap-3">
+          <GripVertical className="h-5 w-5 text-gray-400 mt-1 flex-shrink-0 cursor-grab" />
+          
+          <button 
+            onClick={() => toggleTask(task.id)} 
+            className={`mt-0.5 transition-all flex-shrink-0 ${
+              task.hasProgressTracking && task.trackingType === 'subtasks' && subtaskProgress < subtaskTotal
+                ? 'text-gray-300 cursor-not-allowed'
+                : isPriority ? 'text-red-500 hover:text-red-700' : 'text-gray-400 hover:text-green-600'
+            }`}
+            disabled={task.hasProgressTracking && task.trackingType === 'subtasks' && subtaskProgress < subtaskTotal}
+          >
+            <CheckCircle className="h-5 w-5 md:h-6 md:w-6" />
+          </button>
+          
+          <div className="flex-1 text-left">
+            <div className="flex items-start gap-2">
+              {task.subtasks && task.subtasks.length > 0 && (
+                <button
+                  onClick={() => toggleExpandTask(task.id)}
+                  className="mt-0.5 p-1 hover:bg-gray-100 rounded transition-all flex-shrink-0"
+                >
+                  {isExpanded ? 
+                    <ChevronDown className="h-4 w-4" /> : 
+                    <ChevronRight className="h-4 w-4" />
+                  }
+                </button>
+              )}
+              <span className="font-semibold text-sm md:text-lg text-left break-words">{task.text}</span>
+            </div>
+            
+            {/* Progress Bar for Subtasks */}
+            {task.hasProgressTracking && task.trackingType === 'subtasks' && task.subtasks && (
+              <div className="mt-2 ml-6">
+                <div className="flex justify-between items-center mb-1">
+                  <span className="text-xs font-medium text-gray-600">
+                    Subtasks: {subtaskProgress}/{subtaskTotal} completed
+                  </span>
+                  <span className="text-xs font-bold text-gray-700">
+                    {subtaskPercentage}%
+                  </span>
+                </div>
+                <div className="w-full bg-gray-200 rounded-full h-2">
+                  <div 
+                    className={`h-2 rounded-full transition-all duration-300 ${
+                      subtaskPercentage === 100 
+                        ? 'bg-gradient-to-r from-green-500 to-emerald-500' 
+                        : 'bg-gradient-to-r from-blue-500 to-purple-500'
+                    }`}
+                    style={{width: `${subtaskPercentage}%`}}
+                  />
+                </div>
+              </div>
+            )}
 
-// Enhanced Time Manager with Custom Goals - PART 3
-// Add this right after PART 2 (the return statement begins here)
+            {/* Progress Bar for Units */}
+            {task.hasProgressTracking && task.trackingType !== 'subtasks' && (
+              <div className="mt-2 ml-6">
+                <div className="flex justify-between items-center mb-1">
+                  <span className="text-xs font-medium text-gray-600">
+                    Progress: {task.currentProgress || 0}/{task.targetValue} {task.unitType}
+                  </span>
+                  <span className="text-xs font-bold text-gray-700">
+                    {progressPercent}%
+                  </span>
+                </div>
+                <div className="w-full bg-gray-200 rounded-full h-2">
+                  <div 
+                    className={`h-2 rounded-full transition-all duration-300 ${
+                      progressPercent === 100 
+                        ? 'bg-gradient-to-r from-green-500 to-emerald-500' 
+                        : 'bg-gradient-to-r from-blue-500 to-purple-500'
+                    }`}
+                    style={{width: `${progressPercent}%`}}
+                  />
+                </div>
+                
+                <div className="flex gap-1 mt-2">
+                  <button
+                    onClick={() => quickIncrementProgress(task.id, 100)}
+                    className="px-2 py-1 bg-blue-100 hover:bg-blue-200 rounded text-xs font-medium text-blue-700"
+                  >
+                    +100
+                  </button>
+                  <button
+                    onClick={() => quickIncrementProgress(task.id, 500)}
+                    className="px-2 py-1 bg-blue-100 hover:bg-blue-200 rounded text-xs font-medium text-blue-700"
+                  >
+                    +500
+                  </button>
+                  <button
+                    onClick={() => openProgressModal(task.id)}
+                    className="px-2 py-1 bg-purple-100 hover:bg-purple-200 rounded text-xs font-medium text-purple-700"
+                  >
+                    Custom
+                  </button>
+                </div>
+              </div>
+            )}
+            
+            {/* Expanded Subtasks with better alignment */}
+            {isExpanded && task.subtasks && (
+              <div className="mt-3 ml-6 space-y-1 pl-4 border-l-2 border-gray-300">
+                {task.subtasks.map((subtask) => (
+                  <div
+                    key={subtask.id}
+                    className="flex items-start gap-2 p-1 hover:bg-gray-50 rounded"
+                  >
+                    <button
+                      onClick={() => toggleSubtask(task.id, subtask.id)}
+                      className={`mt-0.5 w-4 h-4 rounded border-2 flex items-center justify-center transition-all flex-shrink-0 ${
+                        subtask.completed 
+                          ? 'bg-green-500 border-green-500 text-white' 
+                          : 'border-gray-400 hover:border-green-500'
+                      }`}
+                    >
+                      {subtask.completed && '✓'}
+                    </button>
+                    <span className={`text-sm text-left break-words ${subtask.completed ? 'line-through text-gray-500' : ''}`}>
+                      {subtask.text}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+            
+            {/* Task metadata */}
+            <div className="flex flex-wrap items-center gap-2 mt-2">
+              {/* Keep existing metadata display */}
+            </div>
+          </div>
+          
+          {/* Right side buttons - make them stack vertically on mobile */}
+          <div className="flex flex-col md:flex-row items-end gap-1 md:gap-2 flex-shrink-0">
+            <div className="flex flex-col md:flex-row gap-1">
+              <span className={`px-2 py-1 rounded-full text-xs font-bold ${priorities[task.priority].color}`}>
+                {priorities[task.priority].icon}
+              </span>
+              <span className={`${isPriority ? 'bg-yellow-100 text-yellow-800' : 'bg-gray-100 text-gray-600'} px-2 py-1 rounded-full text-xs font-bold`}>
+                +{task.xp} XP
+              </span>
+            </div>
+            <div className="flex gap-1">
+              <button onClick={() => startEditTask(task)} className="p-1 bg-blue-500 text-white text-xs rounded hover:bg-blue-600 transition-all">
+                <Edit3 className="h-3 w-3" />
+              </button>
+              <button onClick={() => startFocusSession(task.text)} className="p-1 bg-purple-500 text-white text-xs rounded hover:bg-purple-600 transition-all">
+                <Clock className="h-3 w-3" />
+              </button>
+              <button onClick={() => deleteTask(task.id)} className="p-1 bg-red-500 text-white text-xs rounded hover:bg-red-600 transition-all">
+                🗑️
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  // Progress Analytics Component
+  const ProgressAnalytics = ({ goalId, goalInfo }) => {
+    const [timeRange, setTimeRange] = useState('today');
+    
+    const getTasksForTimeRange = () => {
+      const now = new Date();
+      const goalTasks = tasks.filter(t => t.goalId === goalId);
+      
+      let filteredTasks = goalTasks;
+      
+      if (timeRange === 'today') {
+        filteredTasks = goalTasks.filter(task => {
+          if (task.completed && task.completedDate) {
+            return new Date(task.completedDate).toDateString() === now.toDateString();
+          }
+          if (!task.completed && task.createdAt) {
+            return new Date(task.createdAt).toDateString() === now.toDateString();
+          }
+          return false;
+        });
+      } else if (timeRange === 'week') {
+        const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+        filteredTasks = goalTasks.filter(task => {
+          const dateToCheck = task.completed ? task.completedDate : task.createdAt;
+          if (!dateToCheck) return false;
+          return new Date(dateToCheck) >= weekAgo;
+        });
+      } else if (timeRange === 'month') {
+        const monthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+        filteredTasks = goalTasks.filter(task => {
+          const dateToCheck = task.completed ? task.completedDate : task.createdAt;
+          if (!dateToCheck) return false;
+          return new Date(dateToCheck) >= monthAgo;
+        });
+      }
+      
+      const completed = filteredTasks.filter(t => t.completed).length;
+      const pending = filteredTasks.filter(t => !t.completed).length;
+      const high = filteredTasks.filter(t => !t.completed && t.priority === 'high').length;
+      const medium = filteredTasks.filter(t => !t.completed && t.priority === 'medium').length;
+      const low = filteredTasks.filter(t => !t.completed && t.priority === 'low').length;
+      const total = filteredTasks.length;
+      const xpEarned = filteredTasks.filter(t => t.completed).reduce((sum, t) => sum + (t.xp || 0), 0);
+      
+      return { completed, pending, total, high, medium, low, xpEarned };
+    };
+    
+    const { completed, pending, total, high, medium, low, xpEarned } = getTasksForTimeRange();
+    const completionRate = total > 0 ? Math.round((completed / total) * 100) : 0;
+    
+    // Calculate the circle for the pie chart
+    const radius = 60;
+    const circumference = 2 * Math.PI * radius;
+    const completedLength = (completed / Math.max(total, 1)) * circumference;
+    
+    return (
+      <div className="bg-gradient-to-br from-white to-gray-50 rounded-xl p-6 shadow-lg border border-gray-200">
+        {goalInfo && (
+          <div className="flex items-center gap-3 mb-4">
+            <span className="text-3xl">{goalInfo.icon}</span>
+            <h3 className="text-xl font-bold">{goalInfo.name}</h3>
+          </div>
+        )}
+        
+        <div className="flex justify-center gap-2 mb-6">
+          <button
+            onClick={() => setTimeRange('today')}
+            className={`px-4 py-2 text-sm rounded-lg font-medium transition-all ${
+              timeRange === 'today' 
+                ? 'bg-blue-500 text-white shadow-md' 
+                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+            }`}
+          >
+            Today
+          </button>
+          <button
+            onClick={() => setTimeRange('week')}
+            className={`px-4 py-2 text-sm rounded-lg font-medium transition-all ${
+              timeRange === 'week' 
+                ? 'bg-blue-500 text-white shadow-md' 
+                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+            }`}
+          >
+            This Week
+          </button>
+          <button
+            onClick={() => setTimeRange('month')}
+            className={`px-4 py-2 text-sm rounded-lg font-medium transition-all ${
+              timeRange === 'month' 
+                ? 'bg-blue-500 text-white shadow-md' 
+                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+            }`}
+          >
+            This Month
+          </button>
+        </div>
+        
+        <div className="flex flex-col md:flex-row items-center gap-6">
+          {/* Pie Chart */}
+          <div className="relative">
+            <svg width="150" height="150" className="transform -rotate-90">
+              <circle
+                cx="75"
+                cy="75"
+                r={radius}
+                fill="none"
+                stroke="#e5e7eb"
+                strokeWidth="20"
+              />
+              {total > 0 && (
+                <circle
+                  cx="75"
+                  cy="75"
+                  r={radius}
+                  fill="none"
+                  stroke="url(#gradient)"
+                  strokeWidth="20"
+                  strokeDasharray={`${completedLength} ${circumference}`}
+                  strokeLinecap="round"
+                  className="transition-all duration-700 ease-out"
+                />
+              )}
+              <defs>
+                <linearGradient id="gradient">
+                  <stop offset="0%" stopColor="#10b981" />
+                  <stop offset="100%" stopColor="#059669" />
+                </linearGradient>
+              </defs>
+            </svg>
+            <div className="absolute inset-0 flex items-center justify-center">
+              <div className="text-center">
+                <div className="text-3xl font-bold">{completionRate}%</div>
+                <div className="text-sm text-gray-500">Complete</div>
+              </div>
+            </div>
+          </div>
+          
+          {/* Stats */}
+          <div className="flex-1 grid grid-cols-2 gap-4">
+            <div className="bg-green-50 rounded-lg p-3">
+              <div className="flex items-center gap-2 mb-1">
+                <div className="w-3 h-3 bg-green-500 rounded-full"></div>
+                <span className="text-sm text-gray-600">Completed</span>
+              </div>
+              <span className="text-2xl font-bold text-green-600">{completed}</span>
+            </div>
+            
+            <div className="bg-orange-50 rounded-lg p-3">
+              <div className="flex items-center gap-2 mb-1">
+                <div className="w-3 h-3 bg-orange-500 rounded-full"></div>
+                <span className="text-sm text-gray-600">Pending</span>
+              </div>
+              <span className="text-2xl font-bold text-orange-600">{pending}</span>
+            </div>
+            
+            <div className="bg-blue-50 rounded-lg p-3">
+              <div className="flex items-center gap-2 mb-1">
+                <div className="w-3 h-3 bg-blue-500 rounded-full"></div>
+                <span className="text-sm text-gray-600">Total Tasks</span>
+              </div>
+              <span className="text-2xl font-bold text-blue-600">{total}</span>
+            </div>
+            
+            <div className="bg-purple-50 rounded-lg p-3">
+              <div className="flex items-center gap-2 mb-1">
+                <div className="w-3 h-3 bg-purple-500 rounded-full"></div>
+                <span className="text-sm text-gray-600">XP Earned</span>
+              </div>
+              <span className="text-2xl font-bold text-purple-600">{xpEarned}</span>
+            </div>
+          </div>
+        </div>
+        
+        {/* Priority Breakdown */}
+        {pending > 0 && (
+          <div className="mt-4 p-3 bg-gray-50 rounded-lg">
+            <p className="text-sm font-medium text-gray-700 mb-2">Pending Tasks by Priority:</p>
+            <div className="flex gap-2">
+              <span className="px-2 py-1 bg-red-100 text-red-700 rounded text-xs font-medium">
+                High: {high}
+              </span>
+              <span className="px-2 py-1 bg-yellow-100 text-yellow-700 rounded text-xs font-medium">
+                Medium: {medium}
+              </span>
+              <span className="px-2 py-1 bg-gray-200 text-gray-700 rounded text-xs font-medium">
+                Low: {low}
+              </span>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
 
   // Full Screen Focus Mode
   if (isFullScreen) {
@@ -917,10 +1528,16 @@ const TimeManager = () => {
                   </button>
                 </div>
               </div>
+
+              {/* Add Progress Analytics Chart */}
+              <div className="mt-4">
+                <ProgressAnalytics goalId={currentGoal.id} />
+              </div>
             </div>
           </div>
         </div>
       )}
+
       {/* Header with Goal Selector */}
       <div className="mb-6">
         <div className="flex items-center justify-between mb-4">
@@ -992,6 +1609,19 @@ const TimeManager = () => {
               )}
             </div>
             <div className="flex gap-2">
+              <button
+                onClick={() => {
+                  setAnalyticsGoalId(currentGoal.id);
+                  setShowAnalyticsModal(true);
+                }}
+                className="p-2 bg-white/20 rounded-lg hover:bg-white/30 transition-all group relative"
+                title="View Analytics"
+              >
+                <TrendingUp className="h-4 w-4" />
+                <span className="absolute -bottom-8 left-1/2 transform -translate-x-1/2 bg-black text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
+                  View Analytics
+                </span>
+              </button>
               <button
                 onClick={() => openEditGoalModal(currentGoal)}
                 className="p-2 bg-white/20 rounded-lg hover:bg-white/30 transition-all"
@@ -1104,7 +1734,7 @@ const TimeManager = () => {
             </button>
           </div>
           <p className="text-indigo-200 text-xs md:text-sm">
-            🏆 Complete a session to earn +25 XP bonus!
+            🏆 Complete a session to earn +150 XP bonus!
           </p>
         </div>
       </div>
@@ -1184,59 +1814,180 @@ const TimeManager = () => {
             </div>
           </div>
           
-          {/* Progress Tracking Options - NEW */}
+          {/* Enhanced Progress Tracking Options with Google Keep style Subtasks */}
           <div className="bg-gradient-to-r from-indigo-50 to-blue-50 p-4 rounded-lg border border-indigo-200">
             <div className="flex items-center gap-3 mb-3">
               <label className="flex items-center gap-2 cursor-pointer">
                 <input
                   type="checkbox"
                   checked={hasProgressTracking}
-                  onChange={(e) => setHasProgressTracking(e.target.checked)}
+                  onChange={(e) => {
+                    setHasProgressTracking(e.target.checked);
+                    if (!e.target.checked) {
+                      setSubtasksList([]);
+                      setTrackingType('units');
+                    }
+                  }}
                   className="w-5 h-5 text-indigo-600 rounded focus:ring-indigo-500"
                 />
                 <span className="font-semibold text-indigo-700 flex items-center gap-1">
-                  📊 Add Progress Tracking
+                  📊 Add Progress Tracking or Subtasks
                 </span>
               </label>
             </div>
             
             {hasProgressTracking && (
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                <div>
-                  <label className="block text-xs font-medium mb-1 text-indigo-700">Target Value</label>
-                  <input
-                    type="number"
-                    value={targetValue}
-                    onChange={(e) => setTargetValue(e.target.value)}
-                    placeholder="e.g., 7000"
-                    className="w-full px-3 py-2 border-2 border-indigo-200 rounded-lg focus:outline-none focus:border-indigo-500 transition-all text-sm"
-                    min="1"
-                  />
+              <div className="space-y-3">
+                <div className="flex items-center gap-3">
+                  <label className="flex items-center gap-2">
+                    <input
+                      type="radio"
+                      name="trackingType"
+                      value="units"
+                      checked={trackingType !== 'subtasks'}
+                      onChange={() => {
+                        setTrackingType('units');
+                        setSubtasksList([]);
+                      }}
+                      className="text-indigo-600"
+                    />
+                    <span className="text-sm font-medium">Track Units/Progress</span>
+                  </label>
+                  <label className="flex items-center gap-2">
+                    <input
+                      type="radio"
+                      name="trackingType"
+                      value="subtasks"
+                      checked={trackingType === 'subtasks'}
+                      onChange={() => {
+                        setTrackingType('subtasks');
+                        setTargetValue('');
+                        setUnitType('');
+                      }}
+                      className="text-indigo-600"
+                    />
+                    <span className="text-sm font-medium">Track Subtasks</span>
+                  </label>
                 </div>
                 
-                <div>
-                  <label className="block text-xs font-medium mb-1 text-indigo-700">Unit Type</label>
-                  <input
-                    type="text"
-                    value={unitType}
-                    onChange={(e) => setUnitType(e.target.value)}
-                    placeholder="e.g., steps, pages, minutes"
-                    className="w-full px-3 py-2 border-2 border-indigo-200 rounded-lg focus:outline-none focus:border-indigo-500 transition-all text-sm"
-                    list="unit-suggestions"
-                  />
-                  <datalist id="unit-suggestions">
-                    {commonUnits.map(unit => (
-                      <option key={unit} value={unit} />
-                    ))}
-                  </datalist>
-                </div>
-                
-                <div>
-                  <label className="block text-xs font-medium mb-1 text-indigo-700">Example</label>
-                  <div className="px-3 py-2 bg-white rounded-lg text-sm text-gray-600">
-                    Track: 0/{targetValue || '???'} {unitType || 'units'}
+                {trackingType === 'subtasks' ? (
+                  <div className="space-y-2">
+                    {/* Google Keep Style Subtask Input */}
+                    <div className="space-y-2">
+                      {/* Display existing subtasks */}
+                      {subtasksList.length > 0 && (
+                        <div className="space-y-1 mb-2">
+                          {subtasksList.map((subtask, index) => (
+                            <div
+                              key={subtask.id}
+                              draggable
+                              onDragStart={() => setDraggedSubtask(index)}
+                              onDragOver={(e) => e.preventDefault()}
+                              onDrop={(e) => {
+                                e.preventDefault();
+                                if (draggedSubtask !== null && draggedSubtask !== index) {
+                                  const newList = [...subtasksList];
+                                  const draggedItem = newList[draggedSubtask];
+                                  newList.splice(draggedSubtask, 1);
+                                  newList.splice(index, 0, draggedItem);
+                                  setSubtasksList(newList);
+                                  setDraggedSubtask(null);
+                                }
+                              }}
+                              className="flex items-center gap-2 p-2 bg-white rounded-lg border border-indigo-100 hover:border-indigo-300 transition-all cursor-move"
+                            >
+                              <GripVertical className="h-4 w-4 text-gray-400" />
+                              <div className="w-4 h-4 rounded border-2 border-gray-400"></div>
+                              <input
+                                type="text"
+                                value={subtask.text}
+                                onChange={(e) => {
+                                  const newList = [...subtasksList];
+                                  newList[index].text = e.target.value;
+                                  setSubtasksList(newList);
+                                }}
+                                className="flex-1 text-sm bg-transparent outline-none"
+                                placeholder="Subtask name..."
+                              />
+                              <button
+                                onClick={() => {
+                                  setSubtasksList(subtasksList.filter((_, i) => i !== index));
+                                }}
+                                className="text-red-500 hover:text-red-700 text-sm"
+                              >
+                                ✕
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      
+                      {/* Add new subtask input */}
+                      <div className="flex items-center gap-2 p-2 bg-white rounded-lg border-2 border-indigo-200">
+                        <Plus className="h-4 w-4 text-indigo-600" />
+                        <input
+                          type="text"
+                          value={subtaskInput}
+                          onChange={(e) => setSubtaskInput(e.target.value)}
+                          onKeyPress={(e) => {
+                            if (e.key === 'Enter' && subtaskInput.trim()) {
+                              setSubtasksList([...subtasksList, {
+                                id: Date.now() + Math.random(),
+                                text: subtaskInput.trim(),
+                                completed: false
+                              }]);
+                              setSubtaskInput('');
+                            }
+                          }}
+                          placeholder="Add a subtask (press Enter)"
+                          className="flex-1 text-sm outline-none"
+                        />
+                      </div>
+                      
+                      <p className="text-xs text-indigo-600">
+                        {subtasksList.length} subtask{subtasksList.length !== 1 ? 's' : ''} added
+                      </p>
+                    </div>
                   </div>
-                </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    <div>
+                      <label className="block text-xs font-medium mb-1 text-indigo-700">Target Value</label>
+                      <input
+                        type="number"
+                        value={targetValue}
+                        onChange={(e) => setTargetValue(e.target.value)}
+                        placeholder="e.g., 7000"
+                        className="w-full px-3 py-2 border-2 border-indigo-200 rounded-lg focus:outline-none focus:border-indigo-500 transition-all text-sm"
+                        min="1"
+                      />
+                    </div>
+                    
+                    <div>
+                      <label className="block text-xs font-medium mb-1 text-indigo-700">Unit Type</label>
+                      <input
+                        type="text"
+                        value={unitType}
+                        onChange={(e) => setUnitType(e.target.value)}
+                        placeholder="e.g., steps, pages, minutes"
+                        className="w-full px-3 py-2 border-2 border-indigo-200 rounded-lg focus:outline-none focus:border-indigo-500 transition-all text-sm"
+                        list="unit-suggestions"
+                      />
+                      <datalist id="unit-suggestions">
+                        {commonUnits.map(unit => (
+                          <option key={unit} value={unit} />
+                        ))}
+                      </datalist>
+                    </div>
+                    
+                    <div>
+                      <label className="block text-xs font-medium mb-1 text-indigo-700">Example</label>
+                      <div className="px-3 py-2 bg-white rounded-lg text-sm text-gray-600">
+                        Track: 0/{targetValue || '???'} {unitType || 'units'}
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -1380,396 +2131,58 @@ const TimeManager = () => {
         </div>
       )}
 
-      {/* High Priority Tasks - ENHANCED with Progress Display */}
+      {/* High Priority Tasks */}
       {priorityTasks.length > 0 && (
-        <div className="mb-6">
+        <div 
+          className="mb-6"
+          onDragOver={(e) => e.preventDefault()}
+          onDrop={(e) => handleTaskDrop(e, 'high-priority')}
+        >
           <h3 className="text-xl md:text-2xl font-bold mb-4 flex items-center gap-2">
             <Zap className="h-5 w-5 md:h-6 md:w-6 text-red-500" />
             High Priority Tasks
           </h3>
           <div className="space-y-3">
-            {priorityTasks.map(task => {
-              const deadlineInfo = getDeadlineStatus(task.deadline);
-              const isEditing = editingTask === task.id;
-              const progressPercent = task.hasProgressTracking 
-                ? getProgressPercentage(task.currentProgress || 0, task.targetValue)
-                : 0;
-              
-              return (
-                <div key={task.id} className="bg-gradient-to-r from-red-50 to-pink-50 border-2 border-red-200 rounded-xl shadow-md p-3 md:p-4">
-                  {isEditing ? (
-                    <div className="space-y-3">
-                      <input
-                        type="text"
-                        value={editText}
-                        onChange={(e) => setEditText(e.target.value)}
-                        className="w-full px-3 py-2 border rounded-lg text-sm md:text-base"
-                        placeholder="Edit task..."
-                        autoFocus
-                      />
-                      <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-                        <select value={editPriority} onChange={(e) => setEditPriority(e.target.value)} className="px-2 py-1 border rounded text-xs">
-                          {Object.entries(priorities).map(([key, priority]) => (
-                            <option key={key} value={key}>{priority.icon} {priority.label}</option>
-                          ))}
-                        </select>
-                        <input
-                          type="number"
-                          value={editXP}
-                          onChange={(e) => setEditXP(parseInt(e.target.value) || 50)}
-                          className="px-2 py-1 border rounded text-xs"
-                          placeholder="XP"
-                        />
-                        <input
-                          type="date"
-                          value={editDeadline}
-                          onChange={(e) => setEditDeadline(e.target.value)}
-                          className="px-2 py-1 border rounded text-xs"
-                          min={new Date().toISOString().split('T')[0]}
-                          disabled={editIsRecurring}
-                        />
-                        <input
-                          type="text"
-                          value={editNotes}
-                          onChange={(e) => setEditNotes(e.target.value)}
-                          className="px-2 py-1 border rounded text-xs"
-                          placeholder="Notes"
-                        />
-                      </div>
-                      
-                      {/* Progress Tracking Edit Options */}
-                      <div className="flex items-center gap-3">
-                        <label className="flex items-center gap-2 cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={editHasProgressTracking}
-                            onChange={(e) => setEditHasProgressTracking(e.target.checked)}
-                            className="w-4 h-4 text-indigo-600 rounded"
-                          />
-                          <span className="text-sm font-medium text-indigo-700">📊 Progress Tracking</span>
-                        </label>
-                        {editHasProgressTracking && (
-                          <>
-                            <input
-                              type="number"
-                              value={editTargetValue}
-                              onChange={(e) => setEditTargetValue(e.target.value)}
-                              className="px-2 py-1 border rounded text-xs w-20"
-                              placeholder="Target"
-                            />
-                            <input
-                              type="text"
-                              value={editUnitType}
-                              onChange={(e) => setEditUnitType(e.target.value)}
-                              className="px-2 py-1 border rounded text-xs w-20"
-                              placeholder="Unit"
-                            />
-                          </>
-                        )}
-                      </div>
-                      
-                      <div className="flex items-center gap-3">
-                        <label className="flex items-center gap-2 cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={editIsRecurring}
-                            onChange={(e) => setEditIsRecurring(e.target.checked)}
-                            className="w-4 h-4 text-purple-600 rounded"
-                          />
-                          <span className="text-sm font-medium text-purple-700 flex items-center gap-1">
-                            <RefreshCw className="h-3 w-3" />
-                            Recurring
-                          </span>
-                        </label>
-                        {editIsRecurring && (
-                          <select value={editRecurrenceType} onChange={(e) => setEditRecurrenceType(e.target.value)} className="px-2 py-1 border rounded text-xs">
-                            {Object.entries(recurrenceOptions).map(([key, option]) => (
-                              <option key={key} value={key}>{option.icon} {option.label}</option>
-                            ))}
-                          </select>
-                        )}
-                      </div>
-                      <div className="flex gap-2">
-                        <button onClick={saveEdit} className="px-3 py-1 bg-green-500 text-white rounded text-xs hover:bg-green-600">✅ Save</button>
-                        <button onClick={cancelEdit} className="px-3 py-1 bg-gray-500 text-white rounded text-xs hover:bg-gray-600">❌ Cancel</button>
-                      </div>
-                    </div>
-                  ) : (
-                    <div>
-                      <div className="flex items-center gap-3 md:gap-4">
-                        <button 
-                          onClick={() => toggleTask(task.id)} 
-                          className={`transition-all flex-shrink-0 ${
-                            task.hasProgressTracking && task.currentProgress < task.targetValue
-                              ? 'text-gray-300 cursor-not-allowed'
-                              : 'text-red-500 hover:text-red-700'
-                          }`}
-                          disabled={task.hasProgressTracking && task.currentProgress < task.targetValue}
-                        >
-                          <CheckCircle className="h-5 w-5 md:h-6 md:w-6" />
-                        </button>
-                        <div className="flex-1">
-                          <span className="font-semibold text-sm md:text-lg block">{task.text}</span>
-                          
-                          {/* Progress Bar - NEW */}
-                          {task.hasProgressTracking && (
-                            <div className="mt-2 mb-2">
-                              <div className="flex justify-between items-center mb-1">
-                                <span className="text-xs font-medium text-gray-600">
-                                  Progress: {task.currentProgress || 0}/{task.targetValue} {task.unitType}
-                                </span>
-                                <span className="text-xs font-bold text-gray-700">
-                                  {progressPercent}%
-                                </span>
-                              </div>
-                              <div className="w-full bg-gray-200 rounded-full h-2">
-                                <div 
-                                  className={`h-2 rounded-full transition-all duration-300 ${
-                                    progressPercent === 100 
-                                      ? 'bg-gradient-to-r from-green-500 to-emerald-500' 
-                                      : 'bg-gradient-to-r from-blue-500 to-purple-500'
-                                  }`}
-                                  style={{width: `${progressPercent}%`}}
-                                />
-                              </div>
-                              
-                              {/* Quick Progress Buttons */}
-                              <div className="flex gap-1 mt-2">
-                                <button
-                                  onClick={() => quickIncrementProgress(task.id, 100)}
-                                  className="px-2 py-1 bg-blue-100 hover:bg-blue-200 rounded text-xs font-medium text-blue-700"
-                                >
-                                  +100
-                                </button>
-                                <button
-                                  onClick={() => quickIncrementProgress(task.id, 500)}
-                                  className="px-2 py-1 bg-blue-100 hover:bg-blue-200 rounded text-xs font-medium text-blue-700"
-                                >
-                                  +500
-                                </button>
-                                <button
-                                  onClick={() => quickIncrementProgress(task.id, 1000)}
-                                  className="px-2 py-1 bg-blue-100 hover:bg-blue-200 rounded text-xs font-medium text-blue-700"
-                                >
-                                  +1000
-                                </button>
-                                <button
-                                  onClick={() => openProgressModal(task.id)}
-                                  className="px-2 py-1 bg-purple-100 hover:bg-purple-200 rounded text-xs font-medium text-purple-700"
-                                >
-                                  Custom
-                                </button>
-                              </div>
-                            </div>
-                          )}
-                          
-                          <div className="flex items-center gap-2 mt-1">
-                            {task.isRecurring && (
-                              <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-bold text-white ${recurrenceOptions[task.recurrenceType].color}`}>
-                                <RefreshCw className="h-3 w-3" />
-                                {recurrenceOptions[task.recurrenceType].label}
-                                {task.streak > 0 && ` • ${task.streak} streak`}
-                              </span>
-                            )}
-                            {task.deadline && (
-                              <span className={`inline-block px-2 py-1 rounded text-xs font-bold ${deadlineInfo.color}`}>
-                                📅 {deadlineInfo.text}
-                              </span>
-                            )}
-                            {task.notes && (
-                              <span className="inline-block px-2 py-1 rounded text-xs bg-gray-100 text-gray-600">
-                                📝 {task.notes}
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                        <span className={`px-2 py-1 rounded-full text-xs font-bold ${priorities[task.priority].color}`}>
-                          {priorities[task.priority].icon}
-                        </span>
-                        <span className="bg-yellow-100 text-yellow-800 px-2 py-1 rounded-full text-xs font-bold">
-                          +{task.xp} XP
-                        </span>
-                        <div className="flex gap-1">
-                          <button onClick={() => startEditTask(task)} className="px-2 py-1 bg-blue-500 text-white text-xs rounded hover:bg-blue-600 transition-all">
-                            <Edit3 className="h-3 w-3" />
-                          </button>
-                          <button onClick={() => startFocusSession(task.text)} className="px-3 py-2 bg-purple-500 text-white text-xs rounded hover:bg-purple-600 transition-all">
-                            <Clock className="h-3 w-3" />
-                          </button>
-                          <button onClick={() => deleteTask(task.id)} className="px-2 py-1 bg-red-500 text-white text-xs rounded hover:bg-red-600 transition-all">
-                            🗑️
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              );
-            })}
+            {priorityTasks.map((task) => (
+              <TaskItem 
+                key={task.id} 
+                task={task} 
+                isPriority={true}
+              />
+            ))}
           </div>
         </div>
       )}
 
-      {/* Other Tasks - ENHANCED with Progress Display */}
+      {/* Other Tasks */}
       {otherTasks.length > 0 && (
-        <div className="mb-6">
+        <div 
+          className="mb-6"
+          onDragOver={(e) => e.preventDefault()}
+          onDrop={(e) => handleTaskDrop(e, 'other-tasks')}
+        >
           <h3 className="text-lg md:text-xl font-bold mb-4">📋 Other Tasks</h3>
           <div className="space-y-3">
-            {otherTasks.map(task => {
-              const deadlineInfo = getDeadlineStatus(task.deadline);
-              const isEditing = editingTask === task.id;
-              const progressPercent = task.hasProgressTracking 
-                ? getProgressPercentage(task.currentProgress || 0, task.targetValue)
-                : 0;
-              
-              return (
-                <div key={task.id} className="bg-white/60 backdrop-blur border border-gray-200 rounded-xl shadow-sm p-3 md:p-4">
-                  {isEditing ? (
-                    // Same edit UI as high priority tasks
-                    <div className="space-y-3">
-                      <input type="text" value={editText} onChange={(e) => setEditText(e.target.value)} className="w-full px-3 py-2 border rounded-lg text-sm md:text-base" placeholder="Edit task..." autoFocus />
-                      <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-                        <select value={editPriority} onChange={(e) => setEditPriority(e.target.value)} className="px-2 py-1 border rounded text-xs">
-                          {Object.entries(priorities).map(([key, priority]) => (<option key={key} value={key}>{priority.icon} {priority.label}</option>))}
-                        </select>
-                        <input type="number" value={editXP} onChange={(e) => setEditXP(parseInt(e.target.value) || 50)} className="px-2 py-1 border rounded text-xs" placeholder="XP" />
-                        <input type="date" value={editDeadline} onChange={(e) => setEditDeadline(e.target.value)} className="px-2 py-1 border rounded text-xs" min={new Date().toISOString().split('T')[0]} disabled={editIsRecurring} />
-                        <input type="text" value={editNotes} onChange={(e) => setEditNotes(e.target.value)} className="px-2 py-1 border rounded text-xs" placeholder="Notes" />
-                      </div>
-                      
-                      {/* Progress Tracking Edit Options */}
-                      <div className="flex items-center gap-3">
-                        <label className="flex items-center gap-2 cursor-pointer">
-                          <input type="checkbox" checked={editHasProgressTracking} onChange={(e) => setEditHasProgressTracking(e.target.checked)} className="w-4 h-4 text-indigo-600 rounded" />
-                          <span className="text-sm font-medium text-indigo-700">📊 Progress Tracking</span>
-                        </label>
-                        {editHasProgressTracking && (
-                          <>
-                            <input type="number" value={editTargetValue} onChange={(e) => setEditTargetValue(e.target.value)} className="px-2 py-1 border rounded text-xs w-20" placeholder="Target" />
-                            <input type="text" value={editUnitType} onChange={(e) => setEditUnitType(e.target.value)} className="px-2 py-1 border rounded text-xs w-20" placeholder="Unit" />
-                          </>
-                        )}
-                      </div>
-                      
-                      <div className="flex gap-2">
-                        <button onClick={saveEdit} className="px-3 py-1 bg-green-500 text-white rounded text-xs hover:bg-green-600">✅ Save</button>
-                        <button onClick={cancelEdit} className="px-3 py-1 bg-gray-500 text-white rounded text-xs hover:bg-gray-600">❌ Cancel</button>
-                      </div>
-                    </div>
-                  ) : (
-                    <div>
-                      <div className="flex items-center gap-3 md:gap-4">
-                        <button 
-                          onClick={() => toggleTask(task.id)} 
-                          className={`transition-all flex-shrink-0 ${
-                            task.hasProgressTracking && task.currentProgress < task.targetValue
-                              ? 'text-gray-300 cursor-not-allowed'
-                              : 'text-gray-400 hover:text-green-600'
-                          }`}
-                          disabled={task.hasProgressTracking && task.currentProgress < task.targetValue}
-                        >
-                          <CheckCircle className="h-5 w-5 md:h-6 md:w-6" />
-                        </button>
-                        <div className="flex-1">
-                          <span className="text-sm md:text-lg block">{task.text}</span>
-                          
-                          {/* Progress Bar */}
-                          {task.hasProgressTracking && (
-                            <div className="mt-2 mb-2">
-                              <div className="flex justify-between items-center mb-1">
-                                <span className="text-xs font-medium text-gray-600">
-                                  Progress: {task.currentProgress || 0}/{task.targetValue} {task.unitType}
-                                </span>
-                                <span className="text-xs font-bold text-gray-700">
-                                  {progressPercent}%
-                                </span>
-                              </div>
-                              <div className="w-full bg-gray-200 rounded-full h-2">
-                                <div 
-                                  className={`h-2 rounded-full transition-all duration-300 ${
-                                    progressPercent === 100 
-                                      ? 'bg-gradient-to-r from-green-500 to-emerald-500' 
-                                      : 'bg-gradient-to-r from-blue-500 to-purple-500'
-                                  }`}
-                                  style={{width: `${progressPercent}%`}}
-                                />
-                              </div>
-                              
-                              {/* Quick Progress Buttons */}
-                              <div className="flex gap-1 mt-2">
-                                <button onClick={() => quickIncrementProgress(task.id, 100)} className="px-2 py-1 bg-blue-100 hover:bg-blue-200 rounded text-xs font-medium text-blue-700">
-                                  +100
-                                </button>
-                                <button onClick={() => quickIncrementProgress(task.id, 500)} className="px-2 py-1 bg-blue-100 hover:bg-blue-200 rounded text-xs font-medium text-blue-700">
-                                  +500
-                                </button>
-                                <button onClick={() => quickIncrementProgress(task.id, 1000)} className="px-2 py-1 bg-blue-100 hover:bg-blue-200 rounded text-xs font-medium text-blue-700">
-                                  +1000
-                                </button>
-                                <button onClick={() => openProgressModal(task.id)} className="px-2 py-1 bg-purple-100 hover:bg-purple-200 rounded text-xs font-medium text-purple-700">
-                                  Custom
-                                </button>
-                              </div>
-                            </div>
-                          )}
-                          
-                          <div className="flex items-center gap-2 mt-1">
-                            {task.isRecurring && (
-                              <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-bold text-white ${recurrenceOptions[task.recurrenceType].color}`}>
-                                <RefreshCw className="h-3 w-3" />
-                                {recurrenceOptions[task.recurrenceType].label}
-                                {task.streak > 0 && ` • ${task.streak} streak`}
-                              </span>
-                            )}
-                            {task.deadline && (
-                              <span className={`inline-block px-2 py-1 rounded text-xs font-bold ${deadlineInfo.color}`}>
-                                📅 {deadlineInfo.text}
-                              </span>
-                            )}
-                            {task.notes && (
-                              <span className="inline-block px-2 py-1 rounded text-xs bg-gray-100 text-gray-600">
-                                📝 {task.notes}
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                        <span className={`px-2 py-1 rounded-full text-xs ${priorities[task.priority].color}`}>
-                          {priorities[task.priority].icon}
-                        </span>
-                        <span className="bg-gray-100 text-gray-600 px-2 py-1 rounded-full text-xs">
-                          +{task.xp} XP
-                        </span>
-                        <div className="flex gap-1">
-                          <button onClick={() => startEditTask(task)} className="px-2 py-1 bg-blue-500 text-white text-xs rounded hover:bg-blue-600 transition-all">
-                            <Edit3 className="h-3 w-3" />
-                          </button>
-                          <button onClick={() => startFocusSession(task.text)} className="px-3 py-2 bg-gray-500 text-white text-xs rounded hover:bg-gray-600 transition-all">
-                            <Clock className="h-3 w-3" />
-                          </button>
-                          <button onClick={() => deleteTask(task.id)} className="px-2 py-1 bg-red-500 text-white text-xs rounded hover:bg-red-600 transition-all">
-                            🗑️
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              );
-            })}
+            {otherTasks.map((task) => (
+              <TaskItem 
+                key={task.id} 
+                task={task} 
+                isPriority={false}
+              />
+            ))}
           </div>
         </div>
       )}
-
-      <button
-        onClick={() => setShowCompletedTasksManager(true)}
-        className="px-4 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg text-sm font-medium text-gray-700"
-      >
-        Manage Completed Tasks
-      </button>
 
       {/* Completed Tasks - ENHANCED with Delete & Revoke */}
       {completedTasks.length > 0 && (
         <div className="mb-6">
+          <button
+            onClick={() => setShowCompletedTasksManager(true)}
+            className="px-4 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg text-sm font-medium text-gray-700"
+          >
+            Manage Completed Tasks
+          </button>
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-lg md:text-xl font-bold text-green-600 flex items-center gap-2">
               ✅ Completed Tasks ({completedTasks.length})
@@ -1807,7 +2220,7 @@ const TimeManager = () => {
                 <CheckCircle className="h-5 w-5 md:h-6 md:w-6 text-green-600 flex-shrink-0" />
                 
                 <div className="flex-1">
-                  <span className="line-through text-gray-600 text-sm md:text-lg block">{task.text}</span>
+                  <span className="line-through text-gray-600 text-sm md:text-lg block text-left">{task.text}</span>
                   
                   {/* Task Metadata */}
                   <div className="flex flex-wrap items-center gap-2 mt-1">
@@ -1887,8 +2300,8 @@ const TimeManager = () => {
         </div>
       )}
 
-      {/* Completed Tasks Management Modal - Optional Advanced UI */}
-      {/* {showCompletedTasksManager && (
+      {/* Completed Tasks Management Modal */}
+      {showCompletedTasksManager && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl max-w-4xl w-full p-6 max-h-[90vh] overflow-y-auto">
             <div className="flex justify-between items-center mb-4">
@@ -1896,10 +2309,10 @@ const TimeManager = () => {
               <button onClick={() => setShowCompletedTasksManager(false)} className="p-2 hover:bg-gray-100 rounded-lg">
                 <X className="h-5 w-5" />
               </button>
-            </div> */}
+            </div>
             
             {/* Filter Options */}
-            {/* <div className="flex gap-2 mb-4">
+            <div className="flex gap-2 mb-4">
               <button className="px-3 py-1 bg-blue-100 text-blue-700 rounded-lg text-sm font-medium">
                 All ({completedTasks.length})
               </button>
@@ -1916,13 +2329,12 @@ const TimeManager = () => {
                   return date >= weekAgo;
                 }).length})
               </button>
-            </div> */}
+            </div>
             
-            {/* Task List with Checkboxes for Bulk Selection */}
-            {/* <div className="space-y-2 mb-4">
+            {/* Task List */}
+            <div className="space-y-2 mb-4">
               {completedTasks.map(task => (
                 <div key={task.id} className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg hover:bg-gray-100">
-                  <input type="checkbox" className="w-4 h-4 text-blue-600 rounded" />
                   <div className="flex-1">
                     <p className="font-medium">{task.text}</p>
                     <p className="text-xs text-gray-500">
@@ -1945,25 +2357,37 @@ const TimeManager = () => {
                   </div>
                 </div>
               ))}
-            </div> */}
+            </div>
             
             {/* Bulk Actions Bar */}
-            {/* <div className="flex justify-between items-center p-3 bg-gray-100 rounded-lg">
+            <div className="flex justify-between items-center p-3 bg-gray-100 rounded-lg">
               <span className="text-sm text-gray-600">
-                Selected: 0 tasks
+                Total: {completedTasks.length} completed tasks
               </span>
               <div className="flex gap-2">
-                <button className="px-3 py-1 bg-yellow-500 text-white rounded text-sm hover:bg-yellow-600">
-                  Revoke Selected
+                <button 
+                  onClick={() => {
+                    bulkManageCompletedTasks('revoke-all');
+                    setShowCompletedTasksManager(false);
+                  }}
+                  className="px-3 py-1 bg-yellow-500 text-white rounded text-sm hover:bg-yellow-600"
+                >
+                  Revoke All
                 </button>
-                <button className="px-3 py-1 bg-red-500 text-white rounded text-sm hover:bg-red-600">
-                  Delete Selected
+                <button 
+                  onClick={() => {
+                    bulkManageCompletedTasks('delete-all');
+                    setShowCompletedTasksManager(false);
+                  }}
+                  className="px-3 py-1 bg-red-500 text-white rounded text-sm hover:bg-red-600"
+                >
+                  Delete All
                 </button>
               </div>
             </div>
           </div>
         </div>
-      )} */}
+      )}
 
       {/* All Goals Overview */}
       <div className="mt-8 bg-white/80 backdrop-blur rounded-xl p-6 shadow-lg">
@@ -2002,6 +2426,37 @@ const TimeManager = () => {
           })}
         </div>
       </div>
+      {/* Progress Analytics Modal */}
+      {showAnalyticsModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl max-w-4xl w-full p-6 max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="text-2xl font-bold flex items-center gap-2">
+                📊 Progress Analytics
+                {analyticsGoalId && goals.find(g => g.id === analyticsGoalId) && (
+                  <span className="text-lg text-gray-600">
+                    - {goals.find(g => g.id === analyticsGoalId).icon} {goals.find(g => g.id === analyticsGoalId).name}
+                  </span>
+                )}
+              </h2>
+              <button onClick={() => setShowAnalyticsModal(false)} className="p-2 hover:bg-gray-100 rounded-lg">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            
+            {/* Analytics for each goal if no specific goal selected */}
+            {!analyticsGoalId ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {goals.map(goal => (
+                  <ProgressAnalytics key={goal.id} goalId={goal.id} goalInfo={goal} />
+                ))}
+              </div>
+            ) : (
+              <ProgressAnalytics goalId={analyticsGoalId} goalInfo={goals.find(g => g.id === analyticsGoalId)} />
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 };
