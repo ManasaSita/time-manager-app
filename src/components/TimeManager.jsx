@@ -1,6 +1,3 @@
-// Enhanced Time Manager with Custom Goals - PART 1
-// This is a complete part - copy this entire section
-
 import React, { useState, useEffect } from 'react';
 import { Clock, Play, Pause, CheckCircle, Plus, Calendar, Target, Zap, Trophy, Star, Flame, TrendingUp, DollarSign, Code, Users, BookOpen, Award, Settings, X, Edit3, RefreshCw, Repeat, Trash2, FolderPlus, Folder, ChevronDown, ChevronRight, GripVertical } from 'lucide-react';
 
@@ -106,6 +103,9 @@ const TimeManager = () => {
   const [recurrenceType, setRecurrenceType] = useState('daily');
   const [taskNotes, setTaskNotes] = useState('');
   const [taskXP, setTaskXP] = useState(50);
+  const [showRecurringAnalytics, setShowRecurringAnalytics] = useState(false);
+  const [selectedRecurringTask, setSelectedRecurringTask] = useState(null);
+  const [recurringTemplates, setRecurringTemplates] = useLocalStorage('recurringTemplates', []);
 
   // NEW: Progress tracking state
   const [hasProgressTracking, setHasProgressTracking] = useState(false);
@@ -136,6 +136,9 @@ const TimeManager = () => {
   const [editHasProgressTracking, setEditHasProgressTracking] = useState(false);
   const [editTargetValue, setEditTargetValue] = useState('');
   const [editUnitType, setEditUnitType] = useState('');
+  const [editTrackingType, setEditTrackingType] = useState('units');
+  const [editSubtasks, setEditSubtasks] = useState([]);
+  const [editNewSubtask, setEditNewSubtask] = useState('');
 
   // Common unit types for progress tracking
   const commonUnits = [
@@ -289,6 +292,66 @@ const TimeManager = () => {
     return () => clearInterval(interval);
   }, [setTasks]);
 
+  // Create daily instances of recurring tasks
+  useEffect(() => {
+    const createDailyInstances = () => {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+
+      recurringTemplates.forEach(template => {
+        if (!template.isActive) return;
+
+        if (template.recurrenceType === 'daily') {
+          createDailyInstance(template); // Always create for daily
+        } else if (template.recurrenceType === 'weekly') {
+          const lastInstance = tasks
+            .filter(t => t.templateId === template.id)
+            .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))[0];
+          if (!lastInstance || 
+              Math.floor((today - new Date(lastInstance.createdAt)) / (1000 * 60 * 60 * 24)) >= 7) {
+            createDailyInstance(template);
+          }
+        } else if (template.recurrenceType === 'monthly') {
+          const lastInstance = tasks
+            .filter(t => t.templateId === template.id)
+            .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))[0];
+          if (!lastInstance || 
+              today.getMonth() !== new Date(lastInstance.createdAt).getMonth() || 
+              today.getFullYear() !== new Date(lastInstance.createdAt).getFullYear()) {
+            createDailyInstance(template);
+          }
+        }
+      });
+    };
+
+    // 1️⃣ Run immediately on load
+    createDailyInstances();
+
+    // 2️⃣ Then check every minute for midnight
+    const checkMidnight = () => {
+      const now = new Date();
+      if (now.getHours() === 0 && now.getMinutes() === 0) {
+        createDailyInstances();
+      }
+    };
+
+    const interval = setInterval(checkMidnight, 60000);
+    return () => clearInterval(interval);
+
+  }, [recurringTemplates, tasks]);
+
+
+  useEffect(() => {
+    const checkMidnight = () => {
+      const now = new Date();
+      if (now.getHours() === 0 && now.getMinutes() === 0) {
+        createDailyInstances();
+      }
+    };
+    const interval = setInterval(checkMidnight, 60000);
+    return () => clearInterval(interval);
+  }, [recurringTemplates, tasks]);
+
   // Helper functions
   const formatTime = (seconds) => {
     const mins = Math.floor(seconds / 60);
@@ -395,43 +458,61 @@ const TimeManager = () => {
     setShowGoalModal(true);
   };
 
-// END OF PART 1 - Continue to Part 2
-
-// Enhanced Time Manager with Custom Goals - PART 2
-// Add this right after PART 1 (continues the component)
-
   // Task management functions
   const addTask = () => {
     if (newTask.trim()) {
       const finalXP = Math.floor(taskXP * (currentGoal.xpMultiplier || 1));
       
-      const newTaskObj = {
-        id: Date.now(),
-        text: newTask,
-        goalId: selectedGoalId,
-        completed: false,
-        priority: selectedPriority,
-        xp: finalXP,
-        deadline: selectedDeadline || (isRecurring ? calculateNextDeadline(recurrenceType) : ''),
-        isRecurring: isRecurring,
-        recurrenceType: isRecurring ? recurrenceType : null,
-        notes: taskNotes,
-        streak: 0,
-        lastCompleted: null,
-        createdAt: new Date().toISOString(),
-        // Progress tracking fields
-        hasProgressTracking: hasProgressTracking,
-        trackingType: hasProgressTracking ? trackingType : null,
-        // For units tracking
-        targetValue: hasProgressTracking && trackingType === 'units' ? parseFloat(targetValue) || 0 : null,
-        currentProgress: 0,
-        unitType: hasProgressTracking && trackingType === 'units' ? unitType : null,
-        // For subtasks tracking
-        subtasks: hasProgressTracking && trackingType === 'subtasks' ? subtasksList : null,
-        progressHistory: []
-      };
-      
-      setTasks(prev => [...prev, newTaskObj]);
+      if (isRecurring) {
+        // Create a recurring template
+        const template = {
+          id: Date.now().toString(),
+          text: newTask,
+          goalId: selectedGoalId,
+          priority: selectedPriority,
+          baseXP: finalXP,
+          recurrenceType: recurrenceType,
+          notes: taskNotes,
+          hasProgressTracking: hasProgressTracking,
+          trackingType: hasProgressTracking ? trackingType : null,
+          targetValue: hasProgressTracking && trackingType === 'units' ? parseFloat(targetValue) || 0 : null,
+          unitType: hasProgressTracking && trackingType === 'units' ? unitType : null,
+          subtasks: hasProgressTracking && trackingType === 'subtasks' ? subtasksList : null,
+          totalCompletions: 0,
+          currentStreak: 0,
+          completionHistory: [],
+          createdAt: new Date().toISOString(),
+          isActive: true
+        };
+        
+        setRecurringTemplates(prev => [...prev, template]);
+        
+        // Create today's instance
+        createDailyInstance(template);
+      } else {
+        // Create regular task
+        const newTaskObj = {
+          id: Date.now(),
+          text: newTask,
+          goalId: selectedGoalId,
+          completed: false,
+          priority: selectedPriority,
+          xp: finalXP,
+          deadline: selectedDeadline,
+          isRecurring: false,
+          notes: taskNotes,
+          createdAt: new Date().toISOString(),
+          hasProgressTracking: hasProgressTracking,
+          trackingType: hasProgressTracking ? trackingType : null,
+          targetValue: hasProgressTracking && trackingType === 'units' ? parseFloat(targetValue) || 0 : null,
+          currentProgress: 0,
+          unitType: hasProgressTracking && trackingType === 'units' ? unitType : null,
+          subtasks: hasProgressTracking && trackingType === 'subtasks' ? subtasksList : null,
+          progressHistory: []
+        };
+        
+        setTasks(prev => [...prev, newTaskObj]);
+      }
       
       // Reset form
       setNewTask('');
@@ -448,6 +529,47 @@ const TimeManager = () => {
       setSubtasksList([]);
       setSubtaskInput('');
     }
+  };
+
+  const createDailyInstance = (template) => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    // Check if instance for today already exists
+    const existingToday = tasks.find(t => 
+      t.templateId === template.id && 
+      new Date(t.createdAt).toDateString() === today.toDateString()
+    );
+    
+    if (existingToday) return;
+    
+    const newInstance = {
+      id: Date.now() + Math.random(),
+      text: template.text,
+      goalId: template.goalId,
+      completed: false,
+      priority: template.priority,
+      xp: template.baseXP,
+      deadline: today.toISOString().split('T')[0],
+      isRecurring: true,
+      recurrenceType: template.recurrenceType,
+      templateId: template.id,
+      notes: template.notes,
+      createdAt: today.toISOString(),
+      hasProgressTracking: template.hasProgressTracking,
+      trackingType: template.trackingType,
+      targetValue: template.targetValue,
+      currentProgress: 0,
+      unitType: template.unitType,
+      subtasks: template.subtasks ? template.subtasks.map(s => ({
+        ...s,
+        completed: false,
+        id: Date.now() + Math.random()
+      })) : null,
+      progressHistory: []
+    };
+    
+    setTasks(prev => [...prev, newInstance]);
   };
 
   // NEW: Function to update task progress
@@ -519,45 +641,90 @@ const TimeManager = () => {
           setTotalXP(prev => prev + task.xp);
           updateDailyActivity();
           
-          // Handle recurring task
-          if (task.isRecurring) {
-            updated.streak = (task.streak || 0) + 1;
-            updated.lastCompleted = new Date().toISOString();
-            updated.completedDate = new Date().toISOString(); // Track when it was completed
-            
-            // Create next occurrence for tomorrow
-            const tomorrow = new Date();
-            tomorrow.setDate(tomorrow.getDate() + 1);
-            tomorrow.setHours(0, 0, 0, 0);
-            
-            const nextDeadline = calculateNextDeadline(task.recurrenceType);
-            
-            // Schedule the creation of new task for midnight
-            const timeUntilMidnight = tomorrow.getTime() - Date.now();
-            
-            if (timeUntilMidnight > 0) {
-              // Store in localStorage to create at midnight or on next load
-              const scheduledTasks = JSON.parse(localStorage.getItem('scheduledRecurringTasks') || '[]');
-              scheduledTasks.push({
-                ...task,
-                id: Date.now() + Math.random(),
-                completed: false,
-                deadline: nextDeadline,
-                currentProgress: 0,
-                progressHistory: [],
-                scheduledFor: tomorrow.toISOString()
-              });
-              localStorage.setItem('scheduledRecurringTasks', JSON.stringify(scheduledTasks));
-            }
+          // Mark completion time
+          updated.completedDate = new Date().toISOString();
+          
+          // Handle recurring task - update the template
+          if (task.isRecurring && task.templateId) {
+            setRecurringTemplates(prev => prev.map(template => {
+              if (template.id === task.templateId) {
+                const completionHistory = template.completionHistory || [];
+                completionHistory.push({
+                  date: new Date().toISOString(),
+                  amountDone: task.hasProgressTracking ? (task.currentProgress || 1) : 1,
+                  taskId: task.id,
+                  xpEarned: task.xp
+                });
+                
+                return {
+                  ...template,
+                  totalCompletions: (template.totalCompletions || 0) + 1,
+                  currentStreak: calculateStreak([...completionHistory]),
+                  lastCompleted: new Date().toISOString(),
+                  completionHistory: completionHistory
+                };
+              }
+              return template;
+            }));
           }
         } else if (!updated.completed && task.completed) {
           setCompletedToday(prev => Math.max(0, prev - 1));
           setTotalXP(prev => Math.max(0, prev - task.xp));
+          
+          // Remove from completion history if uncompleting
+          if (task.isRecurring && task.templateId) {
+            setRecurringTemplates(prev => prev.map(template => {
+              if (template.id === task.templateId) {
+                const completionHistory = (template.completionHistory || [])
+                  .filter(h => h.taskId !== task.id);
+                
+                return {
+                  ...template,
+                  totalCompletions: Math.max(0, (template.totalCompletions || 1) - 1),
+                  currentStreak: calculateStreak(completionHistory),
+                  completionHistory: completionHistory
+                };
+              }
+              return template;
+            }));
+          }
         }
         return updated;
       }
       return task;
     }));
+  };
+
+  const calculateStreak = (completionHistory) => {
+    if (!completionHistory || completionHistory.length === 0) return 0;
+    
+    // Sort by date descending
+    const sorted = [...completionHistory].sort((a, b) => 
+      new Date(b.date) - new Date(a.date)
+    );
+    
+    let streak = 0;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    for (let i = 0; i < sorted.length; i++) {
+      const completionDate = new Date(sorted[i].date);
+      completionDate.setHours(0, 0, 0, 0);
+      
+      const expectedDate = new Date(today);
+      expectedDate.setDate(expectedDate.getDate() - i);
+      
+      if (completionDate.getTime() === expectedDate.getTime()) {
+        streak++;
+      } else if (i === 0 && completionDate.getTime() === today.getTime() - 86400000) {
+        // Yesterday - continue checking
+        streak++;
+      } else {
+        break;
+      }
+    }
+    
+    return streak;
   };
 
   const toggleSubtask = (taskId, subtaskId) => {
@@ -692,8 +859,11 @@ const TimeManager = () => {
     setEditNotes(task.notes || '');
     setEditXP(task.xp || 50);
     setEditHasProgressTracking(task.hasProgressTracking || false);
+    setEditTrackingType(task.trackingType || 'units');
     setEditTargetValue(task.targetValue?.toString() || '');
     setEditUnitType(task.unitType || '');
+    setEditSubtasks(task.subtasks ? [...task.subtasks] : []);
+    setEditNewSubtask('');
   };
 
   const saveEdit = () => {
@@ -702,6 +872,18 @@ const TimeManager = () => {
       
       setTasks(prev => prev.map(task => {
         if (task.id === editingTask) {
+          // Calculate new progress for subtasks if they exist
+          let updatedProgress = task.currentProgress;
+          let updatedTargetValue = task.targetValue;
+          
+          if (editHasProgressTracking && editTrackingType === 'subtasks' && editSubtasks) {
+            const completedSubtasks = editSubtasks.filter(s => s.completed).length;
+            updatedProgress = completedSubtasks;
+            updatedTargetValue = editSubtasks.length;
+          } else if (editHasProgressTracking && editTrackingType === 'units') {
+            updatedTargetValue = parseFloat(editTargetValue) || 0;
+          }
+          
           return {
             ...task,
             text: editText,
@@ -712,10 +894,11 @@ const TimeManager = () => {
             recurrenceType: editIsRecurring ? editRecurrenceType : null,
             notes: editNotes,
             hasProgressTracking: editHasProgressTracking,
-            targetValue: editHasProgressTracking ? parseFloat(editTargetValue) || 0 : null,
-            unitType: editHasProgressTracking ? editUnitType : null,
-            // Keep current progress if it exists
-            currentProgress: task.currentProgress || 0
+            trackingType: editHasProgressTracking ? editTrackingType : null,
+            targetValue: editHasProgressTracking ? updatedTargetValue : null,
+            unitType: editHasProgressTracking && editTrackingType === 'units' ? editUnitType : null,
+            subtasks: editHasProgressTracking && editTrackingType === 'subtasks' ? editSubtasks : null,
+            currentProgress: updatedProgress
           };
         }
         return task;
@@ -737,6 +920,9 @@ const TimeManager = () => {
     setEditHasProgressTracking(false);
     setEditTargetValue('');
     setEditUnitType('');
+    setEditTrackingType('units');
+    setEditSubtasks([]);
+    setEditNewSubtask('');
   };
 
   // NEW: Calculate progress percentage
@@ -938,14 +1124,248 @@ const TimeManager = () => {
       : 0;
     
     if (isEditing) {
-      // Edit mode UI (keep existing)
       return (
         <div className={`${
           isPriority 
             ? 'bg-gradient-to-r from-red-50 to-pink-50 border-2 border-red-200' 
             : 'bg-white/60 backdrop-blur border border-gray-200'
         } rounded-xl shadow-sm p-3 md:p-4`}>
-          {/* Keep existing edit UI */}
+          <div className="space-y-3">
+            <input
+              type="text"
+              value={editText}
+              onChange={(e) => setEditText(e.target.value)}
+              className="w-full px-3 py-2 border rounded-lg text-sm md:text-base focus:outline-none focus:border-blue-500"
+              placeholder="Edit task..."
+              autoFocus
+            />
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+              <select 
+                value={editPriority} 
+                onChange={(e) => setEditPriority(e.target.value)} 
+                className="px-2 py-1 border rounded text-xs focus:outline-none focus:border-blue-500"
+              >
+                {Object.entries(priorities).map(([key, priority]) => (
+                  <option key={key} value={key}>{priority.icon} {priority.label}</option>
+                ))}
+              </select>
+              <input
+                type="number"
+                value={editXP}
+                onChange={(e) => setEditXP(parseInt(e.target.value) || 50)}
+                className="px-2 py-1 border rounded text-xs focus:outline-none focus:border-blue-500"
+                placeholder="XP"
+                min="10"
+                max="500"
+                step="10"
+              />
+              <input
+                type="date"
+                value={editDeadline}
+                onChange={(e) => setEditDeadline(e.target.value)}
+                className="px-2 py-1 border rounded text-xs focus:outline-none focus:border-blue-500"
+                min={new Date().toISOString().split('T')[0]}
+                disabled={editIsRecurring}
+              />
+              <input
+                type="text"
+                value={editNotes}
+                onChange={(e) => setEditNotes(e.target.value)}
+                className="px-2 py-1 border rounded text-xs focus:outline-none focus:border-blue-500"
+                placeholder="Notes"
+              />
+            </div>
+            
+            {/* Progress Tracking Edit Options - Enhanced for Subtasks */}
+            <div className="bg-indigo-50 p-3 rounded-lg">
+              <div className="flex items-center gap-3 mb-2">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={editHasProgressTracking}
+                    onChange={(e) => {
+                      setEditHasProgressTracking(e.target.checked);
+                      if (!e.target.checked) {
+                        setEditSubtasks([]);
+                        setEditTrackingType('units');
+                      }
+                    }}
+                    className="w-4 h-4 text-indigo-600 rounded focus:ring-indigo-500"
+                  />
+                  <span className="text-sm font-medium text-indigo-700">📊 Progress Tracking</span>
+                </label>
+              </div>
+              
+              {editHasProgressTracking && (
+                <div className="space-y-3">
+                  <div className="flex items-center gap-3">
+                    <label className="flex items-center gap-2">
+                      <input
+                        type="radio"
+                        name="editTrackingType"
+                        value="units"
+                        checked={editTrackingType !== 'subtasks'}
+                        onChange={() => {
+                          setEditTrackingType('units');
+                          setEditSubtasks([]);
+                        }}
+                        className="text-indigo-600"
+                      />
+                      <span className="text-xs font-medium">Track Units</span>
+                    </label>
+                    <label className="flex items-center gap-2">
+                      <input
+                        type="radio"
+                        name="editTrackingType"
+                        value="subtasks"
+                        checked={editTrackingType === 'subtasks'}
+                        onChange={() => {
+                          setEditTrackingType('subtasks');
+                          setEditTargetValue('');
+                          setEditUnitType('');
+                        }}
+                        className="text-indigo-600"
+                      />
+                      <span className="text-xs font-medium">Track Subtasks</span>
+                    </label>
+                  </div>
+                  
+                  {editTrackingType === 'subtasks' ? (
+                    <div className="space-y-2">
+                      {/* Display existing subtasks */}
+                      {editSubtasks && editSubtasks.length > 0 && (
+                        <div className="space-y-1">
+                          {editSubtasks.map((subtask, index) => (
+                            <div key={subtask.id} className="flex items-center gap-2 p-2 bg-white rounded border border-indigo-200">
+                              <div className="w-4 h-4 rounded border-2 border-gray-400 flex items-center justify-center">
+                                {subtask.completed && '✓'}
+                              </div>
+                              <input
+                                type="text"
+                                value={subtask.text}
+                                onChange={(e) => {
+                                  const newSubtasks = [...editSubtasks];
+                                  newSubtasks[index].text = e.target.value;
+                                  setEditSubtasks(newSubtasks);
+                                }}
+                                className="flex-1 text-sm bg-transparent outline-none"
+                              />
+                              <button
+                                onClick={() => {
+                                  setEditSubtasks(editSubtasks.filter((_, i) => i !== index));
+                                }}
+                                className="text-red-500 hover:text-red-700 text-sm"
+                              >
+                                ✕
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      
+                      {/* Add new subtask */}
+                      <div className="flex items-center gap-2 p-2 bg-white rounded border-2 border-indigo-300">
+                        <Plus className="h-4 w-4 text-indigo-600" />
+                        <input
+                          type="text"
+                          value={editNewSubtask}
+                          onChange={(e) => setEditNewSubtask(e.target.value)}
+                          onKeyPress={(e) => {
+                            if (e.key === 'Enter' && editNewSubtask.trim()) {
+                              setEditSubtasks([...(editSubtasks || []), {
+                                id: Date.now() + Math.random(),
+                                text: editNewSubtask.trim(),
+                                completed: false
+                              }]);
+                              setEditNewSubtask('');
+                            }
+                          }}
+                          placeholder="Add a subtask (press Enter)"
+                          className="flex-1 text-sm outline-none"
+                        />
+                      </div>
+                      
+                      <p className="text-xs text-indigo-600">
+                        {editSubtasks ? editSubtasks.length : 0} subtask{editSubtasks?.length !== 1 ? 's' : ''}
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+                      <input
+                        type="number"
+                        value={editTargetValue}
+                        onChange={(e) => setEditTargetValue(e.target.value)}
+                        className="px-2 py-1 border border-indigo-200 rounded text-xs focus:outline-none focus:border-indigo-500"
+                        placeholder="Target value"
+                        min="1"
+                      />
+                      <input
+                        type="text"
+                        value={editUnitType}
+                        onChange={(e) => setEditUnitType(e.target.value)}
+                        className="px-2 py-1 border border-indigo-200 rounded text-xs focus:outline-none focus:border-indigo-500"
+                        placeholder="Unit type"
+                      />
+                      <div className="px-2 py-1 bg-white rounded text-xs text-gray-600">
+                        Current: {task.currentProgress || 0}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+            
+            {/* Recurring Task Edit Options */}
+            <div className="bg-purple-50 p-3 rounded-lg">
+              <div className="flex items-center gap-3 mb-2">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={editIsRecurring}
+                    onChange={(e) => setEditIsRecurring(e.target.checked)}
+                    className="w-4 h-4 text-purple-600 rounded focus:ring-purple-500"
+                  />
+                  <span className="text-sm font-medium text-purple-700 flex items-center gap-1">
+                    <RefreshCw className="h-3 w-3" />
+                    Recurring Task
+                  </span>
+                </label>
+              </div>
+              
+              {editIsRecurring && (
+                <div className="flex gap-2">
+                  {Object.entries(recurrenceOptions).map(([key, option]) => (
+                    <button
+                      key={key}
+                      onClick={() => setEditRecurrenceType(key)}
+                      className={`px-3 py-1 rounded text-xs font-medium transition-all ${
+                        editRecurrenceType === key 
+                          ? 'bg-purple-500 text-white' 
+                          : 'bg-white text-purple-700 border border-purple-300 hover:bg-purple-100'
+                      }`}
+                    >
+                      {option.icon} {option.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+            
+            <div className="flex gap-2">
+              <button 
+                onClick={saveEdit} 
+                className="flex-1 px-3 py-2 bg-green-500 text-white rounded-lg text-sm font-medium hover:bg-green-600 transition-all flex items-center justify-center gap-1"
+              >
+                ✅ Save Changes
+              </button>
+              <button 
+                onClick={cancelEdit} 
+                className="flex-1 px-3 py-2 bg-gray-500 text-white rounded-lg text-sm font-medium hover:bg-gray-600 transition-all flex items-center justify-center gap-1"
+              >
+                ❌ Cancel
+              </button>
+            </div>
+          </div>
         </div>
       );
     }
@@ -1093,7 +1513,36 @@ const TimeManager = () => {
             
             {/* Task metadata */}
             <div className="flex flex-wrap items-center gap-2 mt-2">
-              {/* Keep existing metadata display */}
+              {task.isRecurring && task.templateId && (
+                <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-bold text-white ${recurrenceOptions[task.recurrenceType].color}`}>
+                  <RefreshCw className="h-3 w-3" />
+                  {recurrenceOptions[task.recurrenceType].label}
+                  {(() => {
+                    const template = recurringTemplates.find(t => t.id === task.templateId);
+                    return template?.currentStreak > 0 ? ` • ${template.currentStreak} 🔥` : '';
+                  })()}
+                </span>
+              )}
+              {task.deadline && (
+                <span className={`inline-block px-2 py-1 rounded text-xs font-bold ${deadlineInfo.color}`}>
+                  📅 {deadlineInfo.text}
+                </span>
+              )}
+              {task.notes && (
+                <span className="inline-block px-2 py-1 rounded text-xs bg-gray-100 text-gray-600">
+                  📝 {task.notes}
+                </span>
+              )}
+              {task.hasProgressTracking && !task.subtasks && (
+                <span className="inline-block px-2 py-1 rounded text-xs bg-blue-100 text-blue-600">
+                  📊 Tracking: {task.unitType}
+                </span>
+              )}
+              {task.subtasks && task.subtasks.length > 0 && (
+                <span className="inline-block px-2 py-1 rounded text-xs bg-purple-100 text-purple-600">
+                  📋 {task.subtasks.filter(s => s.completed).length}/{task.subtasks.length} subtasks
+                </span>
+              )}
             </div>
           </div>
           
@@ -1135,28 +1584,56 @@ const TimeManager = () => {
       let filteredTasks = goalTasks;
       
       if (timeRange === 'today') {
+        const todayStart = new Date();
+        todayStart.setHours(0, 0, 0, 0);
+        const todayEnd = new Date();
+        todayEnd.setHours(23, 59, 59, 999);
+        
         filteredTasks = goalTasks.filter(task => {
+          // Include tasks created today
+          const createdDate = new Date(task.createdAt);
+          const isCreatedToday = createdDate >= todayStart && createdDate <= todayEnd;
+          
+          // Include tasks completed today
+          let isCompletedToday = false;
           if (task.completed && task.completedDate) {
-            return new Date(task.completedDate).toDateString() === now.toDateString();
+            const completedDate = new Date(task.completedDate);
+            isCompletedToday = completedDate >= todayStart && completedDate <= todayEnd;
           }
-          if (!task.completed && task.createdAt) {
-            return new Date(task.createdAt).toDateString() === now.toDateString();
-          }
-          return false;
+          
+          return isCreatedToday || isCompletedToday;
         });
       } else if (timeRange === 'week') {
         const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+        weekAgo.setHours(0, 0, 0, 0);
+        
         filteredTasks = goalTasks.filter(task => {
-          const dateToCheck = task.completed ? task.completedDate : task.createdAt;
-          if (!dateToCheck) return false;
-          return new Date(dateToCheck) >= weekAgo;
+          const createdDate = new Date(task.createdAt || Date.now());
+          const isRecentlyCreated = createdDate >= weekAgo;
+          
+          let isRecentlyCompleted = false;
+          if (task.completed && task.completedDate) {
+            const completedDate = new Date(task.completedDate);
+            isRecentlyCompleted = completedDate >= weekAgo;
+          }
+          
+          return isRecentlyCreated || isRecentlyCompleted;
         });
       } else if (timeRange === 'month') {
         const monthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+        monthAgo.setHours(0, 0, 0, 0);
+        
         filteredTasks = goalTasks.filter(task => {
-          const dateToCheck = task.completed ? task.completedDate : task.createdAt;
-          if (!dateToCheck) return false;
-          return new Date(dateToCheck) >= monthAgo;
+          const createdDate = new Date(task.createdAt || Date.now());
+          const isRecentlyCreated = createdDate >= monthAgo;
+          
+          let isRecentlyCompleted = false;
+          if (task.completed && task.completedDate) {
+            const completedDate = new Date(task.completedDate);
+            isRecentlyCompleted = completedDate >= monthAgo;
+          }
+          
+          return isRecentlyCreated || isRecentlyCompleted;
         });
       }
       
@@ -1311,6 +1788,143 @@ const TimeManager = () => {
               <span className="px-2 py-1 bg-gray-200 text-gray-700 rounded text-xs font-medium">
                 Low: {low}
               </span>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  const RecurringTaskAnalytics = ({ template }) => {
+    const [timeRange, setTimeRange] = useState('week');
+    
+    const getAnalytics = () => {
+      const history = template.completionHistory || [];
+      const now = new Date();
+      now.setHours(23, 59, 59, 999);
+      
+      let relevantHistory = history;
+      let expectedDays = 0;
+      
+      if (timeRange === 'today') {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        relevantHistory = history.filter(h => {
+          const date = new Date(h.date);
+          date.setHours(0, 0, 0, 0);
+          return date.getTime() === today.getTime();
+        });
+        expectedDays = 1;
+      } else if (timeRange === 'week') {
+        const weekAgo = new Date(now.getTime() - 6 * 24 * 60 * 60 * 1000);
+        weekAgo.setHours(0, 0, 0, 0);
+        relevantHistory = history.filter(h => new Date(h.date) >= weekAgo);
+        expectedDays = 7;
+      } else if (timeRange === 'month') {
+        const monthAgo = new Date(now.getTime() - 29 * 24 * 60 * 60 * 1000);
+        monthAgo.setHours(0, 0, 0, 0);
+        relevantHistory = history.filter(h => new Date(h.date) >= monthAgo);
+        expectedDays = 30;
+      }
+      
+      // Calculate completion rate based on recurrence type
+      if (template.recurrenceType === 'weekly') {
+        expectedDays = Math.ceil(expectedDays / 7);
+      } else if (template.recurrenceType === 'monthly') {
+        expectedDays = Math.ceil(expectedDays / 30);
+      }
+      
+      const completions = relevantHistory.length;
+      const completionRate = expectedDays > 0 ? Math.round((completions / expectedDays) * 100) : 0;
+      const totalXP = relevantHistory.reduce((sum, h) => sum + (h.xpEarned || 0), 0);
+      
+      // Get completion dates for visualization
+      const dates = relevantHistory.map(h => new Date(h.date).toLocaleDateString());
+      
+      return {
+        completions,
+        expectedDays,
+        completionRate,
+        totalXP,
+        dates,
+        currentStreak: template.currentStreak || 0
+      };
+    };
+    
+    const analytics = getAnalytics();
+    
+    return (
+      <div className="bg-white rounded-xl p-6 shadow-lg border border-gray-200">
+        <div className="flex items-start justify-between mb-4">
+          <div>
+            <h3 className="text-lg font-bold text-gray-800">{template.text}</h3>
+            <div className="flex items-center gap-2 mt-1">
+              <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-bold text-white ${recurrenceOptions[template.recurrenceType].color}`}>
+                <RefreshCw className="h-3 w-3" />
+                {recurrenceOptions[template.recurrenceType].label}
+              </span>
+              <span className="text-sm text-gray-500">
+                Total: {template.totalCompletions || 0} completions
+              </span>
+            </div>
+          </div>
+          <button
+            onClick={() => setShowRecurringAnalytics(false)}
+            className="p-1 hover:bg-gray-100 rounded"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+        
+        {/* Time Range Selector */}
+        <div className="flex gap-2 mb-4">
+          {['today', 'week', 'month'].map(range => (
+            <button
+              key={range}
+              onClick={() => setTimeRange(range)}
+              className={`px-3 py-1 text-sm rounded-lg font-medium capitalize ${
+                timeRange === range
+                  ? 'bg-blue-500 text-white'
+                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+              }`}
+            >
+              {range === 'today' ? 'Today' : range === 'week' ? 'This Week' : 'This Month'}
+            </button>
+          ))}
+        </div>
+        
+        {/* Stats Grid */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+          <div className="bg-gradient-to-br from-green-50 to-green-100 rounded-lg p-3">
+            <p className="text-xs text-green-600 font-medium">Completion Rate</p>
+            <p className="text-2xl font-bold text-green-700">{analytics.completionRate}%</p>
+          </div>
+          <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-lg p-3">
+            <p className="text-xs text-blue-600 font-medium">Completions</p>
+            <p className="text-2xl font-bold text-blue-700">
+              {analytics.completions}/{analytics.expectedDays}
+            </p>
+          </div>
+          <div className="bg-gradient-to-br from-purple-50 to-purple-100 rounded-lg p-3">
+            <p className="text-xs text-purple-600 font-medium">Current Streak</p>
+            <p className="text-2xl font-bold text-purple-700">{analytics.currentStreak} 🔥</p>
+          </div>
+          <div className="bg-gradient-to-br from-yellow-50 to-yellow-100 rounded-lg p-3">
+            <p className="text-xs text-yellow-600 font-medium">XP Earned</p>
+            <p className="text-2xl font-bold text-yellow-700">{analytics.totalXP}</p>
+          </div>
+        </div>
+        
+        {/* Completion Calendar/List */}
+        {analytics.dates.length > 0 && (
+          <div className="mt-4 p-3 bg-gray-50 rounded-lg">
+            <p className="text-sm font-medium text-gray-700 mb-2">Completed on:</p>
+            <div className="flex flex-wrap gap-2">
+              {analytics.dates.map((date, index) => (
+                <span key={index} className="px-2 py-1 bg-white rounded text-xs text-gray-600 border border-gray-200">
+                  {date}
+                </span>
+              ))}
             </div>
           </div>
         )}
@@ -2174,6 +2788,83 @@ const TimeManager = () => {
         </div>
       )}
 
+      {/* Recurring Tasks Templates */}
+      {recurringTemplates.filter(t => t.goalId === selectedGoalId && t.isActive).length > 0 && (
+        <div className="mb-6">
+          <h3 className="text-lg md:text-xl font-bold mb-4 flex items-center gap-2">
+            <Repeat className="h-5 w-5 md:h-6 md:w-6 text-purple-500" />
+            Recurring Routines
+          </h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {recurringTemplates
+              .filter(t => t.goalId === selectedGoalId && t.isActive)
+              .map(template => {
+                const todayInstance = tasks.find(t => 
+                  t.templateId === template.id && 
+                  new Date(t.createdAt).toDateString() === new Date().toDateString()
+                );
+                
+                return (
+                  <div key={template.id} className="bg-gradient-to-r from-purple-50 to-indigo-50 border border-purple-200 rounded-xl p-4">
+                    <div className="flex justify-between items-start">
+                      <div className="flex-1">
+                        <h4 className="font-semibold text-gray-800">{template.text}</h4>
+                        <div className="flex items-center gap-2 mt-2">
+                          <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-bold text-white ${recurrenceOptions[template.recurrenceType].color}`}>
+                            {recurrenceOptions[template.recurrenceType].icon} {recurrenceOptions[template.recurrenceType].label}
+                          </span>
+                          <span className="text-xs text-gray-600">
+                            🔥 {template.currentStreak || 0} day streak
+                          </span>
+                          <span className="text-xs text-gray-600">
+                            ✅ {template.totalCompletions || 0} total
+                          </span>
+                        </div>
+                        
+                        {todayInstance && (
+                          <div className="mt-2 text-sm">
+                            {todayInstance.completed ? (
+                              <span className="text-green-600 font-medium">✅ Completed today!</span>
+                            ) : (
+                              <span className="text-orange-600 font-medium">⏳ Pending today</span>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                      
+                      <div className="flex gap-1">
+                        <button
+                          onClick={() => {
+                            setSelectedRecurringTask(template);
+                            setShowRecurringAnalytics(true);
+                          }}
+                          className="p-1 bg-purple-500 text-white rounded hover:bg-purple-600"
+                          title="View Analytics"
+                        >
+                          <TrendingUp className="h-4 w-4" />
+                        </button>
+                        <button
+                          onClick={() => {
+                            if (confirm('Pause this recurring task? You can resume it later.')) {
+                              setRecurringTemplates(prev => prev.map(t => 
+                                t.id === template.id ? { ...t, isActive: false } : t
+                              ));
+                            }
+                          }}
+                          className="p-1 bg-orange-500 text-white rounded hover:bg-orange-600"
+                          title="Pause"
+                        >
+                          <Pause className="h-4 w-4" />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+          </div>
+        </div>
+      )}
+
       {/* Completed Tasks - ENHANCED with Delete & Revoke */}
       {completedTasks.length > 0 && (
         <div className="mb-6">
@@ -2232,7 +2923,13 @@ const TimeManager = () => {
                       </span>
                     )}
                     
-                    {task.hasProgressTracking && (
+                    {task.hasProgressTracking && task.trackingType === 'subtasks' && task.subtasks && (
+                      <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium text-blue-700 bg-blue-100">
+                        📊 {task.subtasks.filter(s => s.completed).length}/{task.subtasks.length} subtasks
+                      </span>
+                    )}
+                    
+                    {task.hasProgressTracking && task.trackingType !== 'subtasks' && (
                       <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium text-blue-700 bg-blue-100">
                         📊 {task.currentProgress}/{task.targetValue} {task.unitType}
                       </span>
@@ -2246,15 +2943,18 @@ const TimeManager = () => {
                     
                     <span className="text-xs text-gray-500">
                       Completed {(() => {
-                        const completedDate = task.lastCompleted ? new Date(task.lastCompleted) : new Date();
+                        const completedDate = task.completedDate || task.lastCompleted;
+                        if (!completedDate) return 'today';
+                        
+                        const completed = new Date(completedDate);
                         const today = new Date();
-                        const diffTime = today - completedDate;
+                        const diffTime = today - completed;
                         const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
                         
                         if (diffDays === 0) return 'today';
                         if (diffDays === 1) return 'yesterday';
                         if (diffDays < 7) return `${diffDays} days ago`;
-                        return completedDate.toLocaleDateString();
+                        return completed.toLocaleDateString();
                       })()}
                     </span>
                   </div>
@@ -2426,6 +3126,7 @@ const TimeManager = () => {
           })}
         </div>
       </div>
+
       {/* Progress Analytics Modal */}
       {showAnalyticsModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
@@ -2448,15 +3149,31 @@ const TimeManager = () => {
             {!analyticsGoalId ? (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 {goals.map(goal => (
-                  <ProgressAnalytics key={goal.id} goalId={goal.id} goalInfo={goal} />
+                  <ProgressAnalytics 
+                    key={`${goal.id}-${tasks.filter(t => t.completed).length}`} 
+                    goalId={goal.id} 
+                    goalInfo={goal} 
+                  />
                 ))}
               </div>
             ) : (
-              <ProgressAnalytics goalId={analyticsGoalId} goalInfo={goals.find(g => g.id === analyticsGoalId)} />
+              <ProgressAnalytics 
+                key={`${analyticsGoalId}-${tasks.filter(t => t.completed).length}`}
+                goalId={analyticsGoalId} 
+                goalInfo={goals.find(g => g.id === analyticsGoalId)} 
+              />
             )}
           </div>
         </div>
       )}
+
+      {/* Recurring Task Analytics Modal */}
+      {showRecurringAnalytics && selectedRecurringTask && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <RecurringTaskAnalytics template={selectedRecurringTask} />
+        </div>
+      )}
+
     </div>
   );
 };
